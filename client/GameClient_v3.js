@@ -22,7 +22,12 @@ class GameClient {
             moveDir: { x: 0, y: 0 },
             viewDir: { x: 0, y: 0, z: -1 },
             jump: false,
-            interact: false
+            interact: false,
+            heliPitch: 0,
+            heliRoll: 0,
+            heliYaw: 0,
+            heliRpmUp: false,
+            heliRpmDown: false
         };
 
         this.interactRange = 2.0;
@@ -556,11 +561,36 @@ class GameClient {
         const onKey = (e, down) => {
             if (document.activeElement === document.getElementById('chat-input')) return;
             switch(e.code) {
-                case 'KeyW': this.input.moveDir.y = down ? -1 : 0; break;
-                case 'KeyS': this.input.moveDir.y = down ? 1 : 0; break;
-                case 'KeyA': this.input.moveDir.x = down ? -1 : 0; break;
-                case 'KeyD': this.input.moveDir.x = down ? 1 : 0; break;
-                case 'Space': this.input.jump = down; break;
+                case 'KeyW':
+                    this.input.moveDir.y = down ? -1 : (this.input.moveDir.y === -1 ? 0 : this.input.moveDir.y);
+                    this.input.heliPitch = down ? -1 : (this.input.heliPitch === -1 ? 0 : this.input.heliPitch);
+                    break;
+                case 'KeyS':
+                    this.input.moveDir.y = down ? 1 : (this.input.moveDir.y === 1 ? 0 : this.input.moveDir.y);
+                    this.input.heliPitch = down ? 1 : (this.input.heliPitch === 1 ? 0 : this.input.heliPitch);
+                    break;
+                case 'KeyA':
+                    this.input.moveDir.x = down ? -1 : (this.input.moveDir.x === -1 ? 0 : this.input.moveDir.x);
+                    this.input.heliRoll = down ? -1 : (this.input.heliRoll === -1 ? 0 : this.input.heliRoll);
+                    break;
+                case 'KeyD':
+                    this.input.moveDir.x = down ? 1 : (this.input.moveDir.x === 1 ? 0 : this.input.moveDir.x);
+                    this.input.heliRoll = down ? 1 : (this.input.heliRoll === 1 ? 0 : this.input.heliRoll);
+                    break;
+                case 'KeyZ':
+                    this.input.heliYaw = down ? -1 : (this.input.heliYaw === -1 ? 0 : this.input.heliYaw);
+                    break;
+                case 'KeyC':
+                    this.input.heliYaw = down ? 1 : (this.input.heliYaw === 1 ? 0 : this.input.heliYaw);
+                    break;
+                case 'Space':
+                    this.input.jump = down;
+                    this.input.heliRpmUp = down;
+                    break;
+                case 'ShiftLeft':
+                case 'ShiftRight':
+                    this.input.heliRpmDown = down;
+                    break;
                 case 'KeyE': if (down) this.input.interact = true; break;
             }
         };
@@ -625,93 +655,130 @@ class GameClient {
     
     renderVehicle(type) {
         const group = new THREE.Group();
-        
+        group.userData = group.userData || {};
+
         if (type === 'JEEP') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 3), new THREE.MeshStandardMaterial({ color: 0x335533 }));
-            body.position.y = 0; // Centered
-            group.add(body);
-            // Wheels
-            const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3);
-            wheelGeo.rotateZ(Math.PI/2);
-            const wMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-            
-            const positions = [
-                [-0.9, -0.4, 1], [0.9, -0.4, 1],
-                [-0.9, -0.4, -1], [0.9, -0.4, -1]
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2f6234, metalness: 0.1, roughness: 0.6 });
+            const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.6, 1.4), bodyMat);
+            cabin.position.set(0, 1.0, -0.2);
+            group.add(cabin);
+
+            const bed = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.5, 1.6), bodyMat);
+            bed.position.set(0, 0.75, 0.8);
+            group.add(bed);
+
+            const grill = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.4, 0.3), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            grill.position.set(0, 0.9, -1.8);
+            group.add(grill);
+
+            const rollbar = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.05, 8, 24, Math.PI), new THREE.MeshStandardMaterial({ color: 0x0f0f0f }));
+            rollbar.rotation.z = Math.PI;
+            rollbar.position.set(0, 1.4, 0.8);
+            group.add(rollbar);
+
+            const wheelOffsets = [
+                { x: -1.1, z: 1.1 },
+                { x: 1.1, z: 1.1 },
+                { x: -1.1, z: -1.1 },
+                { x: 1.1, z: -1.1 },
             ];
-            positions.forEach(p => {
-                const w = new THREE.Mesh(wheelGeo, wMat);
-                w.position.set(...p);
-                group.add(w);
+
+            group.userData.wheels = [];
+            wheelOffsets.forEach((pos, idx) => {
+                const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.35, 16);
+                wheelGeo.rotateZ(Math.PI / 2);
+                const wheel = new THREE.Mesh(wheelGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4 }));
+                wheel.position.set(pos.x, 0.4, pos.z);
+                wheel.name = `wheel-${idx}`;
+                group.userData.wheels.push(wheel);
+                group.add(wheel);
             });
         } else if (type === 'TANK') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.0, 4.5), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-            body.position.y = 0;
-            group.add(body);
-            const turret = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 2.0), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-            turret.position.y = 0.9;
+            const hullMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.25, roughness: 0.8 });
+            const hull = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.0, 4.0), hullMat);
+            hull.position.y = 0.8;
+            group.add(hull);
+
+            const upperHull = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.8, 2.0), hullMat);
+            upperHull.position.set(0, 1.3, -0.4);
+            group.add(upperHull);
+
+            const turret = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.6, 20), new THREE.MeshStandardMaterial({ color: 0x2b2b2b }));
+            turret.rotation.x = Math.PI / 2;
+            turret.position.set(0, 1.4, 0);
             group.add(turret);
-            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-            barrel.rotation.x = Math.PI/2;
-            barrel.position.set(0, 0.9, 2.5);
+
+            const barrelGeo = new THREE.CylinderGeometry(0.15, 0.2, 3, 14);
+            barrelGeo.rotateX(Math.PI / 2);
+            const barrel = new THREE.Mesh(barrelGeo, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4 }));
+            barrel.position.set(0, 1.4, 2.2);
             group.add(barrel);
+
+            const createTrackTexture = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 64; canvas.height = 16;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#2b2b2b';
+                ctx.fillRect(0, 0, 64, 16);
+                ctx.fillStyle = '#4a4a4a';
+                for (let i = 0; i < 8; i++) {
+                    ctx.fillRect(i * 8, 0, 4, 16);
+                }
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+                tex.repeat.set(4, 1);
+                return tex;
+            };
+
+            const trackMatLeft = new THREE.MeshStandardMaterial({ color: 0x222222, map: createTrackTexture() });
+            const trackMatRight = new THREE.MeshStandardMaterial({ color: 0x222222, map: createTrackTexture() });
+            const trackGeo = new THREE.BoxGeometry(0.35, 0.5, 4.4);
+            const leftTrack = new THREE.Mesh(trackGeo, trackMatLeft);
+            leftTrack.position.set(-1.5, 0.4, 0);
+            const rightTrack = new THREE.Mesh(trackGeo, trackMatRight);
+            rightTrack.position.set(1.5, 0.4, 0);
+            group.add(leftTrack);
+            group.add(rightTrack);
+            group.userData.tracks = [trackMatLeft, trackMatRight];
         } else if (type === 'HELICOPTER') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 4.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
-            body.position.y = 0;
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 4.0), new THREE.MeshStandardMaterial({ color: 0x224466, metalness: 0.15 }));
+            body.position.y = 0.2;
             group.add(body);
-            const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 3.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
-            tail.position.set(0, 0.2, -3.5);
+
+            const nose = new THREE.Mesh(new THREE.ConeGeometry(0.8, 1.2, 12), new THREE.MeshStandardMaterial({ color: 0x335577 }));
+            nose.rotation.x = Math.PI / 2;
+            nose.position.set(0, 0.4, 2.5);
+            group.add(nose);
+
+            const tail = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 3.4), new THREE.MeshStandardMaterial({ color: 0x1a2f44 }));
+            tail.position.set(0, 0.5, -3.6);
             group.add(tail);
-            // Rotor
-            const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 7.0), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-            rotor.position.y = 1.0;
-            rotor.name = 'rotor'; // Tag for animation
+
+            const skidMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            const skidGeo = new THREE.CylinderGeometry(0.05, 0.05, 3.0, 8);
+            skidGeo.rotateZ(Math.PI / 2);
+            const leftSkid = new THREE.Mesh(skidGeo, skidMat);
+            leftSkid.position.set(-0.7, -0.5, 0.2);
+            const rightSkid = new THREE.Mesh(skidGeo.clone(), skidMat);
+            rightSkid.position.set(0.7, -0.5, 0.2);
+            group.add(leftSkid);
+            group.add(rightSkid);
+
+            const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.08, 7.0), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            rotor.position.y = 1.1;
+            rotor.name = 'rotor';
             group.add(rotor);
+
+            const tailRotorGeo = new THREE.BoxGeometry(0.08, 0.08, 1.6);
+            const tailRotor = new THREE.Mesh(tailRotorGeo, new THREE.MeshStandardMaterial({ color: 0x222222 }));
+            tailRotor.position.set(0, 0.5, -5.0);
+            tailRotor.name = 'tail-rotor';
+            group.add(tailRotor);
         }
         
         return group;
     }
 
-    updateVehicles(vehicleState) {
-        if (!vehicleState) return;
-        
-        // Remove missing
-        const currentIds = new Set(Object.keys(vehicleState));
-        for (const [id, entity] of this.vehicles) {
-            if (!currentIds.has(id)) {
-                this.scene.remove(entity.mesh);
-                this.vehicles.delete(id);
-            }
-        }
-
-        // Add/Update
-        for (const id in vehicleState) {
-            const data = vehicleState[id];
-            
-            if (!this.vehicles.has(id)) {
-                const mesh = this.renderVehicle(data.type);
-                mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
-                this.scene.add(mesh);
-                this.vehicles.set(id, { mesh, type: data.type });
-            }
-
-            const entity = this.vehicles.get(id);
-            const mesh = entity.mesh;
-
-            if (!mesh.userData || !mesh.userData.vehicleId) {
-                mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
-            }
-            
-            mesh.position.set(data.x, data.y, data.z);
-            mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
-            
-            if (data.type === 'HELICOPTER') {
-                const rotor = mesh.getObjectByName('rotor');
-                if (rotor) rotor.rotation.y += 0.5; // Spin
-            }
-        }
-    }
-    
     animate() {
         requestAnimationFrame(() => this.animate());
 
@@ -801,7 +868,12 @@ class GameClient {
             y: finalMove.z,
             viewDir: { x: viewDir.x, y: viewDir.y, z: viewDir.z },
             jump: this.input.jump,
-            interact: this.input.interact
+            interact: this.input.interact,
+            heliPitch: this.input.heliPitch,
+            heliRoll: this.input.heliRoll,
+            heliYaw: this.input.heliYaw,
+            heliRpmUp: this.input.heliRpmUp,
+            heliRpmDown: this.input.heliRpmDown
         });
         this.input.interact = false;
         
@@ -827,9 +899,34 @@ class GameClient {
                 dist
             ).applyAxisAngle(new THREE.Vector3(1, 0, 0), this.cameraRotation.x)
              .applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraRotation.y);
-            
+
             this.camera.position.copy(target).add(offset);
             this.camera.lookAt(target);
+
+            const heliHud = document.getElementById('helicopter-hud');
+            const rpmBar = document.getElementById('rpm-bar-fill');
+            const rpmLabel = document.getElementById('rpm-label');
+            const mount = me.mountedVehicle;
+            if (heliHud) {
+                if (mount && mount.seat === 0 && this.vehicles.has(mount.vehicleId)) {
+                    const veh = this.vehicles.get(mount.vehicleId);
+                    const state = veh.state;
+                    if (veh.type === 'HELICOPTER') {
+                        heliHud.style.display = 'block';
+                        const rpmRatio = state?.maxRPM ? Math.max(0, Math.min(1, state.rpm / state.maxRPM)) : 0;
+                        const pct = Math.round(rpmRatio * 100);
+                        if (rpmBar) {
+                            rpmBar.style.width = `${pct}%`;
+                            rpmBar.style.background = rpmRatio < 0.6 ? '#b02020' : (rpmRatio < 0.85 ? '#d8c020' : '#20b85a');
+                        }
+                        if (rpmLabel) rpmLabel.textContent = `RPM ${pct}%`;
+                    } else {
+                        heliHud.style.display = 'none';
+                    }
+                } else {
+                    heliHud.style.display = 'none';
+                }
+            }
 
             const headPos = myMesh.position.clone().add(new THREE.Vector3(0, 1.6, 0));
             const isPlayerObject = (obj) => {
@@ -1096,9 +1193,9 @@ class GameClient {
 
     updateVehicles(stateArray) {
         if (!stateArray) return;
-        
+
         const validIds = new Set();
-        
+
         stateArray.forEach(data => {
             if (!['JEEP', 'TANK', 'HELICOPTER'].includes(data.type)) return;
             // Additional check: Vehicles from /spawnvehicle use 'veh_' prefix usually, 
@@ -1107,30 +1204,55 @@ class GameClient {
             // But `updateEntities` renders them as Boxes.
             // Let's prioritize `updateVehicles` for anything matching the type.
             // And ensure `updateEntities` skips them.
-            
+
             const id = data.id;
             validIds.add(id);
-            
+
             if (!this.vehicles.has(id)) {
                 const mesh = this.renderVehicle(data.type);
                 mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
                 this.scene.add(mesh);
-                this.vehicles.set(id, { mesh, type: data.type });
+                this.vehicles.set(id, { mesh, type: data.type, state: data });
             }
 
             const entity = this.vehicles.get(id);
             const mesh = entity.mesh;
+            entity.state = data;
 
             if (!mesh.userData || !mesh.userData.vehicleId) {
                 mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
             }
-            
+
             mesh.position.set(data.x, data.y, data.z);
             mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
-            
+            mesh.updateMatrixWorld();
+
+            if (data.wheels && mesh.userData.wheels && mesh.userData.wheels.length === data.wheels.length) {
+                data.wheels.forEach((w, idx) => {
+                    const wheelMesh = mesh.userData.wheels[idx];
+                    if (!wheelMesh) return;
+                    const worldPos = new THREE.Vector3(w.x, w.y, w.z);
+                    const localPos = mesh.worldToLocal(worldPos.clone());
+                    wheelMesh.position.copy(localPos);
+                });
+            }
+
             if (data.type === 'HELICOPTER') {
                 const rotor = mesh.getObjectByName('rotor');
-                if (rotor) rotor.rotation.y += 0.5; 
+                const tailRotor = mesh.getObjectByName('tail-rotor');
+                const rpmRatio = data.maxRPM ? Math.max(0, Math.min(1, data.rpm / data.maxRPM)) : 0;
+                const rotorSpin = 0.4 + rpmRatio * 4.5;
+                if (rotor) rotor.rotation.y += rotorSpin;
+                if (tailRotor) tailRotor.rotation.x += rotorSpin * 2.0;
+            }
+
+            if (mesh.userData.tracks && data.trackOffset !== undefined) {
+                mesh.userData.tracks.forEach(mat => {
+                    if (mat.map) {
+                        mat.map.offset.x = data.trackOffset * 0.5;
+                        mat.map.needsUpdate = true;
+                    }
+                });
             }
         });
 
