@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import NetworkController from './NetworkController.js';
 import { ModelRig, ModelViewer } from '../model.js';
 import NetworkManager from '../shared/NetworkManager.js';
-import { appearanceDefaults, gameplayConfig, isDebugOn, renderingConfig } from '../shared/config.js';
+import { appearanceDefaults, clientConfig, gameplayConfig, isDebugOn, renderingConfig } from '../shared/config.js';
 
 class GameClient {
     constructor() {
@@ -11,7 +11,11 @@ class GameClient {
         this.camera = null;
         this.renderer = null;
         
-        this.socket = io();
+        // Connect to configured server URL, or same origin if not set
+        // For remote connections, set clientConfig.serverUrl in shared/config.js
+        // e.g., 'http://192.168.1.100:3000' or 'http://your-server.com:3000'
+        const serverUrl = clientConfig?.serverUrl || null;
+        this.socket = serverUrl ? io(serverUrl) : io();
         this.net = new NetworkController(this.socket);
         this.entities = new Map(); // id -> { mesh, rig? }
         this.vehicles = new Map(); // id -> { mesh, type }

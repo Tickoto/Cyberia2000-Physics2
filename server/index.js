@@ -411,10 +411,18 @@ function gameLoop() {
 initPhysics().then(() => {
     // 60Hz Loop
     setInterval(gameLoop, TICK_DT);
-    
+
     const PORT = process.env.PORT || serverConfig.port;
-    httpServer.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
+    const HOST = process.env.HOST || serverConfig.host || '0.0.0.0';
+
+    httpServer.listen(PORT, HOST, () => {
+        console.log(`Server running on ${HOST}:${PORT}`);
+        if (HOST === '0.0.0.0') {
+            console.log('Server is accessible from all network interfaces');
+            console.log('Clients can connect using your machine\'s IP address');
+        } else if (HOST === '127.0.0.1' || HOST === 'localhost') {
+            console.log('Server is only accessible from localhost');
+        }
     });
 });
 
