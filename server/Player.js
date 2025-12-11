@@ -96,6 +96,34 @@ export default class Player {
         }
     }
 
+    /**
+     * Creates a JSON-friendly clone of the provided payload, stripping out any
+     * circular references or unsupported values before emitting over socket.io.
+     * If serialization fails, the payload is dropped and a warning is logged
+     * to avoid parser recursion errors.
+     */
+    sanitizePayloadForSocket(payload, contextLabel) {
+        const seen = new WeakSet();
+        const replacer = (key, value) => {
+            if (typeof value === 'object' && value !== null) {
+                if (seen.has(value)) return '[Circular]';
+                seen.add(value);
+            }
+
+            if (typeof value === 'bigint') return value.toString();
+            if (typeof value === 'function' || typeof value === 'symbol') return undefined;
+
+            return value;
+        };
+
+        try {
+            return JSON.parse(JSON.stringify(payload, replacer));
+        } catch (err) {
+            console.warn(`[Interact] Failed to sanitize payload for ${contextLabel}`, err);
+            return null;
+        }
+    }
+
     handleInteraction(viewDir = { x: 0, y: 0, z: -1 }, excludeColliderHandle = null) {
         const origin = this.rigidBody.translation();
         // Start at the player's head position and follow the camera's angle.
@@ -118,8 +146,8 @@ export default class Player {
 
         // Collect debug information for client + server visibility
         const debugPayload = {
-            origin: eyePos,
-            direction: dir,
+            origin: { ...eyePos },
+            direction: { ...dir },
             maxReach: maxReachMeters,
             hit: null
         };
@@ -133,7 +161,7 @@ export default class Player {
                 bodyHandle: hit.bodyHandle,
                 colliderHandle: hit.colliderHandle,
                 distance: distance,
-                point: hit.point,
+                point: hit.point ? { ...hit.point } : null,
                 mappedEntity: entity ? entity.type : null,
                 mappedId: entity && entity.instance ? entity.instance.id : null
             };
@@ -149,14 +177,19 @@ export default class Player {
                     occupied: s !== null
                 }));
 
-                this.socket.emit(NetworkManager.Packet.INTERACT_MENU, {
+                const interactMenuPayload = {
                     type: 'VEHICLE',
                     vehicleType: v.type,
                     health: v.health,
                     maxHealth: v.maxHealth,
                     seats: seats,
                     targetId: v.id
-                });
+                };
+
+                const sanitizedMenu = this.sanitizePayloadForSocket(interactMenuPayload, 'INTERACT_MENU');
+                if (sanitizedMenu) {
+                    this.socket.emit(NetworkManager.Packet.INTERACT_MENU, sanitizedMenu);
+                }
             } else {
                 console.log(`[Interact] ${this.id} hit unmapped entity type`, debugPayload.hit);
             }
@@ -165,7 +198,10 @@ export default class Player {
         }
 
         // Always let the client know what the server raycast observed for debugging
-        this.socket.emit(NetworkManager.Packet.INTERACT_DEBUG, debugPayload);
+        const sanitizedDebug = this.sanitizePayloadForSocket(debugPayload, 'INTERACT_DEBUG');
+        if (sanitizedDebug) {
+            this.socket.emit(NetworkManager.Packet.INTERACT_DEBUG, sanitizedDebug);
+        }
     }
 
     // --- Inventory System ---
