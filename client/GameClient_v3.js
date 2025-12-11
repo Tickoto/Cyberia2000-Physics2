@@ -24,6 +24,10 @@ class GameClient {
             jump: false,
             interact: false
         };
+
+        this.interactRange = 2.0;
+        this.interactRaycaster = new THREE.Raycaster();
+        this.interactDebugLine = null;
         
         this.cameraRotation = { x: 0, y: 0 }; // Pitch, Yaw
         this.isLocked = false;
@@ -50,6 +54,16 @@ class GameClient {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
         document.body.appendChild(this.renderer.domElement);
+
+        const baseDir = new THREE.Vector3(0, 0, -1);
+        this.interactDebugLine = new THREE.ArrowHelper(baseDir, new THREE.Vector3(), this.interactRange, 0xff0000);
+        this.interactDebugLine.frustumCulled = false;
+        this.interactDebugLine.line.material.depthTest = false;
+        this.interactDebugLine.line.material.depthWrite = false;
+        this.interactDebugLine.cone.material.depthTest = false;
+        this.interactDebugLine.cone.material.depthWrite = false;
+        this.interactDebugLine.renderOrder = 999;
+        this.scene.add(this.interactDebugLine);
 
         // Lights
         const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
@@ -719,6 +733,12 @@ class GameClient {
         const camDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraRotation.y);
         const camRight = new THREE.Vector3(-camDir.z, 0, camDir.x);
 
+        // Use full camera orientation (including pitch) for interaction raycasts
+        const viewDir = new THREE.Vector3(0, 0, -1)
+            .applyAxisAngle(new THREE.Vector3(1, 0, 0), this.cameraRotation.x)
+            .applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraRotation.y)
+            .normalize();
+
         const finalMove = new THREE.Vector3();
         finalMove.addScaledVector(camDir, -this.input.moveDir.y);
         finalMove.addScaledVector(camRight, this.input.moveDir.x);
@@ -726,7 +746,7 @@ class GameClient {
         this.net.sendInput({
             x: finalMove.x,
             y: finalMove.z,
-            viewDir: { x: camDir.x, y: camDir.y, z: camDir.z },
+            viewDir: { x: viewDir.x, y: viewDir.y, z: viewDir.z },
             jump: this.input.jump,
             interact: this.input.interact
         });
@@ -750,7 +770,43 @@ class GameClient {
             
             this.camera.position.copy(target).add(offset);
             this.camera.lookAt(target);
-            
+
+            const headPos = myMesh.position.clone().add(new THREE.Vector3(0, 1.6, 0));
+            const isPlayerObject = (obj) => {
+                let current = obj;
+                while (current) {
+                    if (current === myMesh) return true;
+                    current = current.parent;
+                }
+                return false;
+            };
+
+            this.interactRaycaster.far = this.interactRange;
+            this.interactRaycaster.set(headPos, viewDir);
+            const isInteractionDebug = (obj) => {
+                let current = obj;
+                while (current) {
+                    if (current === this.interactDebugLine) return true;
+                    current = current.parent;
+                }
+                return false;
+            };
+
+            const interactHits = this.interactRaycaster.intersectObjects(this.scene.children, true)
+                .filter(hit => !isPlayerObject(hit.object) && !isInteractionDebug(hit.object));
+
+            const endPoint = headPos.clone().addScaledVector(viewDir, this.interactRange);
+            if (interactHits.length > 0) {
+                endPoint.copy(interactHits[0].point);
+            }
+
+            if (this.interactDebugLine) {
+                const length = headPos.distanceTo(endPoint);
+                this.interactDebugLine.position.copy(headPos);
+                this.interactDebugLine.setDirection(viewDir.clone().normalize());
+                this.interactDebugLine.setLength(length, 0.25 * length, 0.1 * length);
+            }
+
             // Rotate Player Mesh to face movement (Fixed 180 flip)
             if (finalMove.lengthSq() > 0.001) {
                 const angle = Math.atan2(finalMove.x, finalMove.z);
