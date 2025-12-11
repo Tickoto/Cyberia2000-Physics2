@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import NetworkController from './NetworkController.js';
 import { ModelRig, ModelViewer } from '../model.js';
 import NetworkManager from '../shared/NetworkManager.js';
-import { isDebugOn } from '../shared/config.js';
+import { appearanceDefaults, gameplayConfig, isDebugOn, renderingConfig } from '../shared/config.js';
 
 class GameClient {
     constructor() {
@@ -17,7 +17,7 @@ class GameClient {
         this.vehicles = new Map(); // id -> { mesh, type }
         
         this.sunLight = null;
-        this.dayTime = 0.25; // 0.25 = Noon (Sun at top)
+        this.dayTime = renderingConfig.dayTimeStart; // 0.25 = Noon (Sun at top)
 
         this.input = {
             moveDir: { x: 0, y: 0 },
@@ -26,19 +26,19 @@ class GameClient {
             interact: false
         };
 
-        this.interactRange = 2.0;
+        this.interactRange = gameplayConfig.interactRange;
         this.interactRaycaster = new THREE.Raycaster();
         this.interactDebugLine = null;
         this.isDebugOn = isDebugOn === true;
         
         this.cameraRotation = { x: 0, y: 0 }; // Pitch, Yaw
         this.isLocked = false;
-        this.username = "Guest";
+        this.username = appearanceDefaults.username;
         this.playerClass = "SOLDIER"; // Default
-        this.hairColor = "#c54f5c";
-        this.skinColor = "#f7d6c2";
-        this.outfit = "DEFAULT";
-        this.hairStyle = "DEFAULT";
+        this.hairColor = appearanceDefaults.hairColor;
+        this.skinColor = appearanceDefaults.skinColor;
+        this.outfit = appearanceDefaults.outfit;
+        this.hairStyle = appearanceDefaults.hairStyle;
         this.currentBiome = "SCANNING...";
 
         this.init();
@@ -47,10 +47,10 @@ class GameClient {
     init() {
         // 1. Setup Three.js
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x87CEEB);
-        this.scene.fog = new THREE.Fog(0x87CEEB, 10, 200);
+        this.scene.background = new THREE.Color(renderingConfig.backgroundColor);
+        this.scene.fog = new THREE.Fog(renderingConfig.fog.color, renderingConfig.fog.near, renderingConfig.fog.far);
 
-        this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.camera = new THREE.PerspectiveCamera(renderingConfig.cameraFov, window.innerWidth / window.innerHeight, 0.1, 1000);
         
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -92,16 +92,16 @@ class GameClient {
         const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
         this.scene.add(ambientLight);
 
-        this.sunLight = new THREE.DirectionalLight(0xffffff, 1);
+        this.sunLight = new THREE.DirectionalLight(0xffffff, renderingConfig.sunLight.intensity);
         this.sunLight.castShadow = true;
-        this.sunLight.shadow.mapSize.width = 2048;
-        this.sunLight.shadow.mapSize.height = 2048;
-        this.sunLight.shadow.camera.near = 0.5;
-        this.sunLight.shadow.camera.far = 500;
-        this.sunLight.shadow.camera.left = -100;
-        this.sunLight.shadow.camera.right = 100;
-        this.sunLight.shadow.camera.top = 100;
-        this.sunLight.shadow.camera.bottom = -100;
+        this.sunLight.shadow.mapSize.width = renderingConfig.sunLight.shadowMapSize;
+        this.sunLight.shadow.mapSize.height = renderingConfig.sunLight.shadowMapSize;
+        this.sunLight.shadow.camera.near = renderingConfig.sunLight.cameraNear;
+        this.sunLight.shadow.camera.far = renderingConfig.sunLight.cameraFar;
+        this.sunLight.shadow.camera.left = -renderingConfig.sunLight.cameraBounds;
+        this.sunLight.shadow.camera.right = renderingConfig.sunLight.cameraBounds;
+        this.sunLight.shadow.camera.top = renderingConfig.sunLight.cameraBounds;
+        this.sunLight.shadow.camera.bottom = -renderingConfig.sunLight.cameraBounds;
         this.scene.add(this.sunLight);
 
         // Sun & Moon Visuals

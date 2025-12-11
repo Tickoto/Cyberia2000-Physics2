@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import NetworkManager from '../shared/NetworkManager.js';
 import ChatSystem from '../shared/ChatSystem.js';
+import { appearanceDefaults, serverConfig, worldConfig } from '../shared/config.js';
 import WorldGenerator from './WorldGenerator.js';
 import PhysicsSystems from './PhysicsSystems.js';
 import Player from './Player.js';
@@ -31,7 +32,7 @@ app.get('/', (req, res) => {
 });
 
 // Game State
-const TICK_RATE = 60;
+const TICK_RATE = serverConfig.tickRate;
 const TICK_DT = 1000 / TICK_RATE;
 let physicsWorld;
 let worldData; // Store generated world
@@ -47,14 +48,13 @@ let lastState = {};
 
 async function initPhysics() {
     await RAPIER.init();
-    const gravity = { x: 0.0, y: -9.81, z: 0.0 };
-    physicsWorld = new RAPIER.World(gravity);
+    physicsWorld = new RAPIER.World(serverConfig.gravity);
     console.log('Rapier Physics World Initialized');
     
     physicsSystems = new PhysicsSystems(physicsWorld);
 
     // Infinite World Generator
-    generator = new WorldGenerator('cyberia-infinite');
+    generator = new WorldGenerator(worldConfig.seed, worldConfig.chunkSize, worldConfig.seaLevel);
 
     // Remove Static Physics Floor (using dynamic chunks now)
     
@@ -70,11 +70,11 @@ io.on('connection', (socket) => {
     // Init player
     if (physicsWorld) {
         // Calculate spawn height safely
-        const spawnX = 0;
-        const spawnZ = 0;
-        let spawnY = 20; // Default fallback
+        const spawnX = worldConfig.spawn.x;
+        const spawnZ = worldConfig.spawn.z;
+        let spawnY = worldConfig.spawn.fallbackHeight; // Default fallback
         if (generator) {
-            spawnY = generator.getGroundHeight(spawnX, spawnZ) + 2.0;
+            spawnY = generator.getGroundHeight(spawnX, spawnZ) + worldConfig.spawn.clearanceAboveGround;
         }
 
         const player = new Player(
@@ -98,10 +98,10 @@ io.on('connection', (socket) => {
         if (players.has(socket.id)) {
             const p = players.get(socket.id);
             p.data.username = data.username.substring(0, 12); 
-            p.data.hairColor = data.hairColor || '#c54f5c';
-            p.data.skinColor = data.skinColor || '#f7d6c2';
-            p.data.outfit = data.outfit || 'DEFAULT';
-            p.data.hairStyle = data.hairStyle || 'DEFAULT';
+            p.data.hairColor = data.hairColor || appearanceDefaults.hairColor;
+            p.data.skinColor = data.skinColor || appearanceDefaults.skinColor;
+            p.data.outfit = data.outfit || appearanceDefaults.outfit;
+            p.data.hairStyle = data.hairStyle || appearanceDefaults.hairStyle;
             console.log(`Player ${socket.id} joined as ${p.data.username} with outfit ${p.data.outfit}`);
         }
     });
@@ -412,7 +412,7 @@ initPhysics().then(() => {
     // 60Hz Loop
     setInterval(gameLoop, TICK_DT);
     
-    const PORT = process.env.PORT || 3000;
+    const PORT = process.env.PORT || serverConfig.port;
     httpServer.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
     });
