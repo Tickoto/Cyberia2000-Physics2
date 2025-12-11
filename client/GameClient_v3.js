@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import NetworkController from './NetworkController.js';
 import { ModelRig, ModelViewer } from '../model.js';
 import NetworkManager from '../shared/NetworkManager.js';
+import { isDebugOn } from '../shared/config.js';
 
 class GameClient {
     constructor() {
@@ -28,6 +29,7 @@ class GameClient {
         this.interactRange = 2.0;
         this.interactRaycaster = new THREE.Raycaster();
         this.interactDebugLine = null;
+        this.isDebugOn = isDebugOn === true;
         
         this.cameraRotation = { x: 0, y: 0 }; // Pitch, Yaw
         this.isLocked = false;
@@ -55,34 +57,36 @@ class GameClient {
         this.renderer.shadowMap.enabled = true;
         document.body.appendChild(this.renderer.domElement);
 
-        const baseDir = new THREE.Vector3(0, 0, -1);
-        this.interactDebugLine = new THREE.ArrowHelper(baseDir, new THREE.Vector3(), this.interactRange, 0xff0000);
-        this.interactDebugLine.frustumCulled = false;
-        this.interactDebugLine.renderOrder = 999;
+        if (this.isDebugOn) {
+            const baseDir = new THREE.Vector3(0, 0, -1);
+            this.interactDebugLine = new THREE.ArrowHelper(baseDir, new THREE.Vector3(), this.interactRange, 0xff0000);
+            this.interactDebugLine.frustumCulled = false;
+            this.interactDebugLine.renderOrder = 999;
 
-        // Force the interaction ray visual to always render on top and stay bright
-        const lineMaterial = new THREE.LineBasicMaterial({
-            color: 0xff0000,
-            depthTest: false,
-            depthWrite: false,
-            transparent: true,
-            opacity: 0.95,
-            fog: false,
-            toneMapped: false
-        });
-        const coneMaterial = new THREE.MeshBasicMaterial({
-            color: 0xff0000,
-            depthTest: false,
-            depthWrite: false,
-            transparent: true,
-            opacity: 0.95,
-            fog: false,
-            toneMapped: false
-        });
-        this.interactDebugLine.line.material = lineMaterial;
-        this.interactDebugLine.cone.material = coneMaterial;
-        this.interactDebugLine.visible = false;
-        this.scene.add(this.interactDebugLine);
+            // Force the interaction ray visual to always render on top and stay bright
+            const lineMaterial = new THREE.LineBasicMaterial({
+                color: 0xff0000,
+                depthTest: false,
+                depthWrite: false,
+                transparent: true,
+                opacity: 0.95,
+                fog: false,
+                toneMapped: false
+            });
+            const coneMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff0000,
+                depthTest: false,
+                depthWrite: false,
+                transparent: true,
+                opacity: 0.95,
+                fog: false,
+                toneMapped: false
+            });
+            this.interactDebugLine.line.material = lineMaterial;
+            this.interactDebugLine.cone.material = coneMaterial;
+            this.interactDebugLine.visible = false;
+            this.scene.add(this.interactDebugLine);
+        }
 
         // Lights
         const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
@@ -248,9 +252,11 @@ class GameClient {
             document.exitPointerLock();
         });
 
-        this.socket.on(NetworkManager.Packet.INTERACT_DEBUG, (data) => {
-            console.log('[Server Interaction Debug]', data);
-        });
+        if (this.isDebugOn) {
+            this.socket.on(NetworkManager.Packet.INTERACT_DEBUG, (data) => {
+                console.log('[Server Interaction Debug]', data);
+            });
+        }
         
         // 3. Input Listeners
         this.setupInput();
@@ -860,7 +866,7 @@ class GameClient {
                 endPoint.copy(interactHits[0].point);
             }
 
-            if (interactTriggered) {
+            if (this.isDebugOn && interactTriggered) {
                 if (interactHits.length === 0) {
                     console.warn('[Client Interaction Debug] No intersection found', {
                         head: headPos.toArray(),
