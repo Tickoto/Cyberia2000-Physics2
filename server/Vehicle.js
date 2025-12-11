@@ -14,6 +14,16 @@ export default class Vehicle {
         this.maxHealth = 100;
         this.seats = [];
 
+        this.heliState = {
+            rotorRPM: 0,
+            maxRPM: 1200,
+            spoolRate: 600, // RPM per second
+            liftPower: 9000,
+            torquePower: 1400,
+            stability: 0.8,
+            yawStability: 0.6
+        };
+
         const seatCount = type === 'JEEP' ? 4 : (type === 'TANK' ? 2 : 6);
         for(let i=0; i<seatCount; i++) this.seats.push(null); // null = empty, string = playerId
 
@@ -28,15 +38,16 @@ export default class Vehicle {
         if (this.type === 'HELICOPTER') {
             const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
                 .setTranslation(position.x, position.y + 5, position.z)
-                .setLinearDamping(0.5)
-                .setAngularDamping(1.0);
-            
+                .setLinearDamping(0.35)
+                .setAngularDamping(1.1);
+
             this.chassis = this.world.createRigidBody(bodyDesc);
-            const collider = RAPIER.ColliderDesc.cuboid(1.5, 1.0, 3.0);
-        this.world.createCollider(collider, this.chassis);
-        this.bodies.push(this.chassis);
-        return;
-    }
+            const collider = RAPIER.ColliderDesc.cuboid(1.5, 1.0, 3.0)
+                .setFriction(0.8);
+            this.world.createCollider(collider, this.chassis);
+            this.bodies.push(this.chassis);
+            return;
+        }
 
         // Land Vehicles (Jeep, Tank)
         const isTank = this.type === 'TANK';
@@ -49,8 +60,18 @@ export default class Vehicle {
             .setTranslation(position.x, position.y + 1, position.z)
             .setAdditionalMass(mass);
         const chassis = this.world.createRigidBody(chassisDesc);
-        const chassisColl = RAPIER.ColliderDesc.cuboid(width, 0.5, length); 
+        const chassisColl = RAPIER.ColliderDesc.cuboid(width, 0.5, length)
+            .setTranslation(0, -0.2, 0);
         this.world.createCollider(chassisColl, chassis);
+
+        // Slightly heavier plate near the bottom to lower center of mass without making flips impossible
+        const ballast = RAPIER.ColliderDesc.cuboid(width * 0.9, 0.2, length * 0.9)
+            .setTranslation(0, -0.6, 0)
+            .setDensity(isTank ? 3.5 : 2.5);
+        this.world.createCollider(ballast, chassis);
+
+        // Keep angular damping reasonable so vehicles feel weighty but can still roll if pushed
+        chassis.setAngularDamping(isTank ? 0.65 : 0.55);
         this.bodies.push(chassis);
         this.chassis = chassis;
 
@@ -171,14 +192,50 @@ export default class Vehicle {
     applyDriverInput(input = {}, dt = 1 / 60) {
         if (!this.chassis) return;
 
+        const rawMove = input.rawMove || { x: input.x || 0, y: input.y || 0 };
+
+        if (this.type === 'HELICOPTER') {
+            const controls = input.vehicle || {};
+            const heli = this.heliState;
+
+            const throttleInput = (controls.throttleUp ? 1 : 0) - (controls.throttleDown ? 1 : 0);
+            heli.rotorRPM = Math.max(0, Math.min(heli.maxRPM, heli.rotorRPM + heli.spoolRate * throttleInput * dt));
+
+            const liftRatio = heli.rotorRPM / heli.maxRPM;
+            const liftImpulse = liftRatio * heli.liftPower * dt;
+            this.chassis.applyImpulse({ x: 0, y: liftImpulse, z: 0 }, true);
+
+            const pitchInput = -(rawMove.y || 0);
+            const rollInput = rawMove.x || 0;
+            const yawInput = (controls.yawRight ? 1 : 0) - (controls.yawLeft ? 1 : 0);
+
+            const torque = heli.torquePower * dt;
+            this.chassis.applyTorqueImpulse({
+                x: pitchInput * torque,
+                y: yawInput * torque * 0.6,
+                z: -rollInput * torque
+            }, true);
+
+            const angVel = this.chassis.angvel();
+            this.chassis.applyTorqueImpulse({
+                x: -angVel.x * heli.stability * dt,
+                y: -angVel.y * heli.yawStability * dt,
+                z: -angVel.z * heli.stability * dt
+            }, true);
+
+            this.chassis.setLinearDamping(0.25 + (1 - liftRatio) * 0.2);
+            this.chassis.setAngularDamping(0.6);
+            return;
+        }
+
         // Vehicle-specific tuning
         const engineForce = this.type === 'TANK' ? 11000 : 7500;
         const maxSpeed = this.type === 'TANK' ? 18 : 26;
-        const steerTorque = this.type === 'TANK' ? 2200 : 1600;
-        const lateralStiffness = this.type === 'TANK' ? 0.35 : 0.5;
+        const steerTorque = this.type === 'TANK' ? 2600 : 1700;
+        const lateralStiffness = this.type === 'TANK' ? 0.4 : 0.55;
 
-        const forwardInput = input.y || 0;
-        const steerInput = input.x || 0;
+        const forwardInput = rawMove.y || 0;
+        const steerInput = rawMove.x || 0;
 
         const rot = this.chassis.rotation();
         const rotateVector = (v) => {
@@ -231,19 +288,31 @@ export default class Vehicle {
         const steerImpulse = { x: 0, y: yawRateError * dt, z: 0 };
         this.chassis.applyTorqueImpulse(steerImpulse, true);
 
+        // Tanks can twist in place by applying small counter-forces when standing still
+        if (this.type === 'TANK' && Math.abs(forwardInput) < 0.05 && Math.abs(steerInput) > 0.01) {
+            const twistImpulse = steerInput * steerTorque * 0.8 * dt;
+            this.chassis.applyTorqueImpulse({ x: 0, y: twistImpulse, z: 0 }, true);
+        }
+
         // Mild damping keeps the vehicle controllable and prevents runaway speeds
         this.chassis.setLinearDamping(0.12);
-        this.chassis.setAngularDamping(0.4);
+        this.chassis.setAngularDamping(0.45);
     }
 
     toJSON() {
         const t = this.chassis.translation();
         const r = this.chassis.rotation();
-        return {
+        const data = {
             id: this.id,
             type: this.type,
             x: t.x, y: t.y, z: t.z,
             qx: r.x, qy: r.y, qz: r.z, qw: r.w
         };
+
+        if (this.type === 'HELICOPTER') {
+            data.rotorRPM = this.heliState.rotorRPM;
+        }
+
+        return data;
     }
 }

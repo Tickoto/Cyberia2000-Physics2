@@ -22,7 +22,11 @@ class GameClient {
             moveDir: { x: 0, y: 0 },
             viewDir: { x: 0, y: 0, z: -1 },
             jump: false,
-            interact: false
+            interact: false,
+            throttleUp: false,
+            throttleDown: false,
+            yawLeft: false,
+            yawRight: false
         };
 
         this.interactRange = 2.0;
@@ -560,7 +564,10 @@ class GameClient {
                 case 'KeyS': this.input.moveDir.y = down ? 1 : 0; break;
                 case 'KeyA': this.input.moveDir.x = down ? -1 : 0; break;
                 case 'KeyD': this.input.moveDir.x = down ? 1 : 0; break;
-                case 'Space': this.input.jump = down; break;
+                case 'Space': this.input.jump = down; this.input.throttleUp = down; break;
+                case 'ShiftLeft': this.input.throttleDown = down; break;
+                case 'KeyZ': this.input.yawLeft = down; break;
+                case 'KeyC': this.input.yawRight = down; break;
                 case 'KeyE': if (down) this.input.interact = true; break;
             }
         };
@@ -625,46 +632,110 @@ class GameClient {
     
     renderVehicle(type) {
         const group = new THREE.Group();
-        
+
         if (type === 'JEEP') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 3), new THREE.MeshStandardMaterial({ color: 0x335533 }));
-            body.position.y = 0; // Centered
-            group.add(body);
-            // Wheels
-            const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3);
+            const paint = new THREE.MeshStandardMaterial({ color: 0x2f4f3f, roughness: 0.55, metalness: 0.15 });
+            const trim = new THREE.MeshStandardMaterial({ color: 0x1a1d1a, roughness: 0.35, metalness: 0.35 });
+            const glass = new THREE.MeshStandardMaterial({ color: 0xaec7d8, transparent: true, opacity: 0.5, roughness: 0.1 });
+
+            const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 3.2), paint);
+            chassis.position.y = 0;
+            group.add(chassis);
+
+            const cab = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 1.4), paint);
+            cab.position.set(0, 0.45, -0.2);
+            group.add(cab);
+
+            const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.5, 0.05), glass);
+            windshield.position.set(0, 0.6, 0.5);
+            group.add(windshield);
+
+            const bumper = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.2, 0.4), trim);
+            bumper.position.set(0, -0.25, 1.7);
+            group.add(bumper);
+
+            const rollbar = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 8, 16, Math.PI), trim);
+            rollbar.rotation.z = Math.PI / 2;
+            rollbar.position.set(0, 0.7, -0.8);
+            group.add(rollbar);
+
+            const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.32, 20);
             wheelGeo.rotateZ(Math.PI/2);
-            const wMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-            
+            const rimGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.34, 12);
+            rimGeo.rotateZ(Math.PI/2);
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x0c0c0c });
+            const rimMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.75, roughness: 0.2 });
+
             const positions = [
-                [-0.9, -0.4, 1], [0.9, -0.4, 1],
-                [-0.9, -0.4, -1], [0.9, -0.4, -1]
+                [-0.95, -0.45, 1.1], [0.95, -0.45, 1.1],
+                [-0.95, -0.45, -1.1], [0.95, -0.45, -1.1]
             ];
             positions.forEach(p => {
-                const w = new THREE.Mesh(wheelGeo, wMat);
-                w.position.set(...p);
-                group.add(w);
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                wheel.position.set(...p);
+                group.add(wheel);
+
+                const rim = new THREE.Mesh(rimGeo, rimMat);
+                rim.position.set(...p);
+                group.add(rim);
             });
         } else if (type === 'TANK') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.0, 4.5), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-            body.position.y = 0;
-            group.add(body);
-            const turret = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 2.0), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-            turret.position.y = 0.9;
+            const armor = new THREE.MeshStandardMaterial({ color: 0x2a2d2a, roughness: 0.6 });
+            const trim = new THREE.MeshStandardMaterial({ color: 0x1b1d1b, roughness: 0.5 });
+
+            const hull = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.0, 4.6), armor);
+            hull.position.y = 0;
+            group.add(hull);
+
+            const treadLeft = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 4.8), trim);
+            treadLeft.position.set(-1.6, -0.2, 0);
+            group.add(treadLeft);
+            const treadRight = treadLeft.clone();
+            treadRight.position.x = 1.6;
+            group.add(treadRight);
+
+            const turret = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.6, 16), armor);
+            turret.rotation.x = Math.PI / 2;
+            turret.position.y = 1.1;
             group.add(turret);
-            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+
+            const cupola = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.3, 12), trim);
+            cupola.rotation.x = Math.PI / 2;
+            cupola.position.set(0.6, 1.25, -0.2);
+            group.add(cupola);
+
+            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3.4, 12), trim);
             barrel.rotation.x = Math.PI/2;
-            barrel.position.set(0, 0.9, 2.5);
+            barrel.position.set(0, 1.1, 2.3);
             group.add(barrel);
         } else if (type === 'HELICOPTER') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 4.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
-            body.position.y = 0;
-            group.add(body);
-            const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 3.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
-            tail.position.set(0, 0.2, -3.5);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1f3f5f, metalness: 0.25, roughness: 0.4 });
+            const glass = new THREE.MeshStandardMaterial({ color: 0x9ccff7, transparent: true, opacity: 0.55, roughness: 0.05 });
+            const rotorMat = new THREE.MeshStandardMaterial({ color: 0x121212, metalness: 0.4, roughness: 0.2 });
+
+            const fuselage = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.4, 4.2), bodyMat);
+            fuselage.position.y = 0;
+            group.add(fuselage);
+
+            const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 16, 0, Math.PI), glass);
+            cockpit.position.set(0, 0.2, 1.5);
+            group.add(cockpit);
+
+            const tail = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 3.3), bodyMat);
+            tail.position.set(0, 0.2, -3.6);
             group.add(tail);
-            // Rotor
-            const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 7.0), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-            rotor.position.y = 1.0;
+
+            const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), rotorMat);
+            tailRotor.position.set(0, 0.6, -5.0);
+            tailRotor.name = 'tailRotor';
+            group.add(tailRotor);
+
+            const rotorHub = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.25, 10), rotorMat);
+            rotorHub.position.y = 1.1;
+            group.add(rotorHub);
+
+            const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.08, 7.2), rotorMat);
+            rotor.position.y = 1.1;
             rotor.name = 'rotor'; // Tag for animation
             group.add(rotor);
         }
@@ -704,10 +775,15 @@ class GameClient {
             
             mesh.position.set(data.x, data.y, data.z);
             mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
-            
+
             if (data.type === 'HELICOPTER') {
+                const rpmFactor = Math.max(0, Math.min(1, (data.rotorRPM || 0) / 1200));
+                const spinRate = 0.2 + rpmFactor * 1.2;
+
                 const rotor = mesh.getObjectByName('rotor');
-                if (rotor) rotor.rotation.y += 0.5; // Spin
+                if (rotor) rotor.rotation.y += spinRate; // Spin faster as RPM rises
+                const tailRotor = mesh.getObjectByName('tailRotor');
+                if (tailRotor) tailRotor.rotation.z += spinRate * 1.6;
             }
         }
     }
@@ -799,6 +875,13 @@ class GameClient {
         this.net.sendInput({
             x: finalMove.x,
             y: finalMove.z,
+            rawMove: { ...this.input.moveDir },
+            vehicle: {
+                throttleUp: this.input.throttleUp,
+                throttleDown: this.input.throttleDown,
+                yawLeft: this.input.yawLeft,
+                yawRight: this.input.yawRight
+            },
             viewDir: { x: viewDir.x, y: viewDir.y, z: viewDir.z },
             jump: this.input.jump,
             interact: this.input.interact
