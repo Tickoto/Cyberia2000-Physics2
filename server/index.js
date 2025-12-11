@@ -291,13 +291,29 @@ function handleVehicleEntry(socket, payload) {
     if (Number.isNaN(seatIndex) || seatIndex < 0 || seatIndex >= vehicle.seats.length) return;
 
     // Seat already taken by someone else
-    if (vehicle.seats[seatIndex] && vehicle.seats[seatIndex] !== socket.id) return;
+    if (vehicle.seats[seatIndex] && vehicle.seats[seatIndex] !== socket.id) {
+        socket.emit(NetworkManager.Packet.VEHICLE_MOUNTED, {
+            success: false,
+            reason: 'Seat occupied',
+            vehicleId,
+            seat: seatIndex
+        });
+        return;
+    }
 
     // Free previous mount if any
     player.dismountVehicle();
 
     vehicle.seats[seatIndex] = socket.id;
     player.mountVehicle(vehicleId, seatIndex);
+
+    const seatPos = vehicle.getSeatWorldPosition(seatIndex);
+    socket.emit(NetworkManager.Packet.VEHICLE_MOUNTED, {
+        success: true,
+        vehicleId,
+        seat: seatIndex,
+        position: seatPos || player.data.position
+    });
 }
 
 function serializeState() {
