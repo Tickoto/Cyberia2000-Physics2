@@ -72,7 +72,7 @@ class PhysicsSystems {
      * @param {number} maxDistance 
      * @returns {Object|null} Hit result or null
      */
-    raycastInteract(origin, direction, maxDistance = 5.0, excludeColliderHandle = null) {
+    raycastInteract(origin, direction, maxDistance = 5.0, excludeCollider = null) {
         // Helper to translate Rapier's hit payload into the format expected by callers.
         const buildHitResult = (hit, rayUsed) => {
             const colliderHandle = hit.collider ?? hit.colliderHandle;
@@ -107,9 +107,7 @@ class PhysicsSystems {
             };
         };
 
-        const excludeHandle = excludeColliderHandle === null
-            ? undefined
-            : excludeColliderHandle;
+        const excludedColliderRef = excludeCollider || undefined;
 
         const castRay = (ray, distance) => this.world.castRay(
             ray,
@@ -118,7 +116,7 @@ class PhysicsSystems {
             undefined,
             undefined,
             undefined,
-            excludeHandle
+            excludedColliderRef
         );
 
         const ray = new RAPIER.Ray(origin, direction);
@@ -128,7 +126,7 @@ class PhysicsSystems {
         // offset the origin slightly forward and try again so interaction
         // works even when the camera starts inside the collider volume.
         const firstCollider = hit ? (hit.collider ?? hit.colliderHandle) : null;
-        if (hit && excludeColliderHandle !== null && firstCollider === excludeColliderHandle) {
+        if (hit && excludedColliderRef && firstCollider === excludedColliderRef.handle) {
             const padding = 0.6;
             const trimmedOrigin = {
                 x: origin.x + direction.x * padding,
