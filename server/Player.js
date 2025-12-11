@@ -1,5 +1,6 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import NetworkManager from '../shared/NetworkManager.js';
+import { isDebugOn } from '../shared/config.js';
 
 export default class Player {
     constructor(socket, world, position = { x: 0, y: 10, z: 0 }, physicsSystems, physicsHandleMap, vehicles) {
@@ -212,13 +213,15 @@ export default class Player {
 
         const hit = this.physicsSystems.raycastInteract(eyePos, dir, maxReachMeters, excludeCollider);
 
-        // Collect debug information for client + server visibility
-        const debugPayload = {
-            origin: { ...eyePos },
-            direction: { ...dir },
-            maxReach: maxReachMeters,
-            hit: null
-        };
+        const shouldDebug = isDebugOn === true;
+        const debugPayload = shouldDebug
+            ? {
+                origin: { ...eyePos },
+                direction: { ...dir },
+                maxReach: maxReachMeters,
+                hit: null
+            }
+            : null;
 
         if (hit) {
             const entity = this.physicsHandleMap
@@ -227,17 +230,19 @@ export default class Player {
 
             const distance = typeof hit.distance === 'number' ? hit.distance : null;
 
-            debugPayload.hit = {
-                bodyHandle: hit.bodyHandle,
-                colliderHandle: hit.colliderHandle,
-                distance: distance,
-                point: hit.point ? { ...hit.point } : null,
-                mappedEntity: entity ? entity.type : null,
-                mappedId: entity && entity.instance ? entity.instance.id : null
-            };
+            if (shouldDebug && debugPayload) {
+                debugPayload.hit = {
+                    bodyHandle: hit.bodyHandle,
+                    colliderHandle: hit.colliderHandle,
+                    distance: distance,
+                    point: hit.point ? { ...hit.point } : null,
+                    mappedEntity: entity ? entity.type : null,
+                    mappedId: entity && entity.instance ? entity.instance.id : null
+                };
 
-            const distanceLabel = distance !== null ? `${distance.toFixed(3)}m` : 'unknown distance';
-            console.log(`[Interact] ${this.id} hit body ${hit.bodyHandle} at ${distanceLabel}`, debugPayload.hit);
+                const distanceLabel = distance !== null ? `${distance.toFixed(3)}m` : 'unknown distance';
+                console.log(`[Interact] ${this.id} hit body ${hit.bodyHandle} at ${distanceLabel}`, debugPayload.hit);
+            }
 
             if (entity && entity.type === 'VEHICLE') {
                 const v = entity.instance;
@@ -260,17 +265,19 @@ export default class Player {
                 if (sanitizedMenu) {
                     this.socket.emit(NetworkManager.Packet.INTERACT_MENU, sanitizedMenu);
                 }
-            } else {
+            } else if (shouldDebug && debugPayload) {
                 console.log(`[Interact] ${this.id} hit unmapped entity type`, debugPayload.hit);
             }
-        } else {
+        } else if (shouldDebug && debugPayload) {
             console.log(`[Interact] ${this.id} raycast missed`, debugPayload);
         }
 
         // Always let the client know what the server raycast observed for debugging
-        const sanitizedDebug = this.sanitizePayloadForSocket(debugPayload, 'INTERACT_DEBUG');
-        if (sanitizedDebug) {
-            this.socket.emit(NetworkManager.Packet.INTERACT_DEBUG, sanitizedDebug);
+        if (shouldDebug && debugPayload) {
+            const sanitizedDebug = this.sanitizePayloadForSocket(debugPayload, 'INTERACT_DEBUG');
+            if (sanitizedDebug) {
+                this.socket.emit(NetworkManager.Packet.INTERACT_DEBUG, sanitizedDebug);
+            }
         }
     }
 
