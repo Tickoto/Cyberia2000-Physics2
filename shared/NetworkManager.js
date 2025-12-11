@@ -2,6 +2,7 @@ export default class NetworkManager {
     static Packet = {
         LOGIN: 'login',
         ACTION: 'action',
+        ENTER_VEHICLE: 'enter_vehicle',
         UPDATE: 'update',
         CHAT: 'chat',
         CHUNK_REQUEST: 'chunk_request',

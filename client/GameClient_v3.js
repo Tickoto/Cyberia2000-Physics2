@@ -184,7 +184,10 @@ class GameClient {
                         btn.onmouseleave = () => btn.style.background = bgColor;
                         btn.onclick = () => {
                             console.log(`Entering ${data.vehicleType} seat ${seat.id}`);
-                            // this.socket.emit('ENTER_VEHICLE', { vehicleId: data.targetId, seat: seat.id });
+                            this.socket.emit(NetworkManager.Packet.ENTER_VEHICLE, {
+                                vehicleId: data.targetId,
+                                seat: seat.id
+                            });
                             menu.remove();
                             document.body.requestPointerLock();
                         };
