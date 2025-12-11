@@ -127,16 +127,19 @@ export default class Player {
         if (hit) {
             const entity = this.physicsHandleMap ? this.physicsHandleMap.get(hit.bodyHandle) : null;
 
+            const distance = typeof hit.distance === 'number' ? hit.distance : null;
+
             debugPayload.hit = {
                 bodyHandle: hit.bodyHandle,
                 colliderHandle: hit.colliderHandle,
-                distance: hit.distance,
+                distance: distance,
                 point: hit.point,
                 mappedEntity: entity ? entity.type : null,
                 mappedId: entity && entity.instance ? entity.instance.id : null
             };
 
-            console.log(`[Interact] ${this.id} hit body ${hit.bodyHandle} at ${hit.distance.toFixed(3)}m`, debugPayload.hit);
+            const distanceLabel = distance !== null ? `${distance.toFixed(3)}m` : 'unknown distance';
+            console.log(`[Interact] ${this.id} hit body ${hit.bodyHandle} at ${distanceLabel}`, debugPayload.hit);
 
             if (entity && entity.type === 'VEHICLE') {
                 const v = entity.instance;

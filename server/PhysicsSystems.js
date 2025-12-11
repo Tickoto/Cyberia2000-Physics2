@@ -95,11 +95,16 @@ class PhysicsSystems {
             // Since Rapier JS raw objects don't store arbitrary JS objects easily on 'userData' without a wrapper,
             // we assume the Entity class managing this body handles the lookup via body.handle.
             
+            // Rapier returns the time-of-impact under the property name `toi`.
+            // Preserve a consistent `distance` field for callers, but guard
+            // against unexpected undefined values to avoid downstream errors.
+            const toi = typeof hit.toi === 'number' ? hit.toi : hit.timeOfImpact;
+
             return {
                 colliderHandle: hit.colliderHandle,
                 bodyHandle: body ? body.handle : null,
-                distance: hit.timeOfImpact,
-                point: ray.pointAt(hit.timeOfImpact)
+                distance: toi,
+                point: typeof toi === 'number' ? ray.pointAt(toi) : null
             };
         }
         return null;
