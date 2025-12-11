@@ -1406,14 +1406,40 @@ class GameClient {
             .normalize();
 
         const interactTriggered = this.input.interact;
-        const finalMove = new THREE.Vector3();
-        finalMove.addScaledVector(camDir, -this.input.moveDir.y);
-        finalMove.addScaledVector(camRight, this.input.moveDir.x);
+
+        // Check if player is mounted in a vehicle
+        const me = this.net.myId ? this.entities.get(this.net.myId) : null;
+        const isInVehicle = me && me.mountedVehicle && me.mountedVehicle.seat === 0;
+        let mountedVehicleType = null;
+
+        if (isInVehicle) {
+            const vehicleEntity = this.vehicles.get(me.mountedVehicle.vehicleId);
+            if (vehicleEntity) {
+                mountedVehicleType = vehicleEntity.type;
+            }
+        }
+
+        // Determine input based on whether we're in a vehicle
+        let inputX, inputY;
+
+        if (isInVehicle) {
+            // For vehicles, send raw WASD input (vehicle-relative controls)
+            // W/S = forward/back (y axis), A/D = left/right (x axis)
+            inputX = this.input.moveDir.x;  // A/D raw
+            inputY = this.input.moveDir.y;  // W/S raw
+        } else {
+            // For on-foot movement, use camera-relative movement
+            const finalMove = new THREE.Vector3();
+            finalMove.addScaledVector(camDir, -this.input.moveDir.y);
+            finalMove.addScaledVector(camRight, this.input.moveDir.x);
+            inputX = finalMove.x;
+            inputY = finalMove.z;
+        }
 
         // Send input including helicopter-specific controls
         this.net.sendInput({
-            x: finalMove.x,
-            y: finalMove.z,
+            x: inputX,
+            y: inputY,
             viewDir: { x: viewDir.x, y: viewDir.y, z: viewDir.z },
             jump: this.input.jump,
             interact: this.input.interact,
@@ -1522,9 +1548,16 @@ class GameClient {
             }
 
             // Rotate Player Mesh to face movement (Fixed 180 flip)
-            if (finalMove.lengthSq() > 0.001) {
-                const angle = Math.atan2(finalMove.x, finalMove.z);
-                myMesh.rotation.y = angle + Math.PI;
+            // Only rotate when on foot (not in vehicle)
+            if (!me.mountedVehicle) {
+                // Reconstruct camera-relative movement for rotation
+                const moveVec = new THREE.Vector3();
+                moveVec.addScaledVector(camDir, -this.input.moveDir.y);
+                moveVec.addScaledVector(camRight, this.input.moveDir.x);
+                if (moveVec.lengthSq() > 0.001) {
+                    const angle = Math.atan2(moveVec.x, moveVec.z);
+                    myMesh.rotation.y = angle + Math.PI;
+                }
             }
         } else if (this.interactDebugLine) {
             this.interactDebugLine.visible = false;

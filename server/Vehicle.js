@@ -12,30 +12,31 @@ import RAPIER from '@dimforge/rapier3d-compat';
 
 const VEHICLE_CONFIG = {
     JEEP: {
-        // Chassis dimensions
-        chassisWidth: 1.0,
-        chassisHeight: 0.4,
-        chassisLength: 2.0,
+        // Chassis dimensions (half-extents)
+        chassisWidth: 0.9,
+        chassisHeight: 0.35,
+        chassisLength: 1.8,
         chassisMass: 800,
 
         // Center of Mass offset (lower for stability)
-        comOffset: { x: 0, y: -1.0, z: 0 },
+        comOffset: { x: 0, y: -0.3, z: 0 },
 
         // Suspension parameters (Hooke's Law: F = -kx - bv)
         suspension: {
-            restLength: 0.6,        // Natural length of spring
-            springStiffness: 35000, // k - spring constant (N/m)
-            damperStrength: 4500,   // b - damping coefficient (Ns/m)
-            maxTravel: 0.4,         // Maximum compression distance
-            wheelRadius: 0.35
+            restLength: 0.5,        // Natural length of spring
+            springStiffness: 45000, // k - spring constant (N/m)
+            damperStrength: 5500,   // b - damping coefficient (Ns/m)
+            maxTravel: 0.35,        // Maximum compression distance
+            wheelRadius: 0.35,
+            mountHeight: -0.2      // Height of suspension mount below chassis center
         },
 
-        // Wheel positions (relative to chassis center)
+        // Wheel positions (relative to chassis center - Y is mount point)
         wheelPositions: [
-            { x: -0.85, y: 0, z: 1.2 },   // Front Left
-            { x: 0.85, y: 0, z: 1.2 },    // Front Right
-            { x: -0.85, y: 0, z: -1.2 },  // Rear Left
-            { x: 0.85, y: 0, z: -1.2 }    // Rear Right
+            { x: -0.85, y: -0.2, z: 1.2 },   // Front Left
+            { x: 0.85, y: -0.2, z: 1.2 },    // Front Right
+            { x: -0.85, y: -0.2, z: -1.2 },  // Rear Left
+            { x: 0.85, y: -0.2, z: -1.2 }    // Rear Right
         ],
 
         // Handling
@@ -59,32 +60,33 @@ const VEHICLE_CONFIG = {
     },
 
     TANK: {
-        // Chassis dimensions (much larger and heavier)
-        chassisWidth: 1.8,
-        chassisHeight: 0.6,
-        chassisLength: 3.5,
+        // Chassis dimensions (half-extents, much larger and heavier)
+        chassisWidth: 1.6,
+        chassisHeight: 0.5,
+        chassisLength: 3.2,
         chassisMass: 8000,  // 10x heavier than jeep
 
         // Center of Mass offset (very low for stability)
-        comOffset: { x: 0, y: -1.2, z: 0 },
+        comOffset: { x: 0, y: -0.4, z: 0 },
 
         // Suspension (stiffer for heavy weight)
         suspension: {
-            restLength: 0.5,
-            springStiffness: 120000,
-            damperStrength: 15000,
-            maxTravel: 0.3,
-            wheelRadius: 0.5
+            restLength: 0.45,
+            springStiffness: 180000,
+            damperStrength: 22000,
+            maxTravel: 0.25,
+            wheelRadius: 0.4,
+            mountHeight: -0.3      // Height of suspension mount below chassis center
         },
 
         // Track wheel positions (6 wheels per side simulated)
         wheelPositions: [
-            { x: -1.4, y: 0, z: 2.0 },    // Front Left
-            { x: 1.4, y: 0, z: 2.0 },     // Front Right
-            { x: -1.4, y: 0, z: 0 },      // Mid Left
-            { x: 1.4, y: 0, z: 0 },       // Mid Right
-            { x: -1.4, y: 0, z: -2.0 },   // Rear Left
-            { x: 1.4, y: 0, z: -2.0 }     // Rear Right
+            { x: -1.4, y: -0.3, z: 2.0 },    // Front Left
+            { x: 1.4, y: -0.3, z: 2.0 },     // Front Right
+            { x: -1.4, y: -0.3, z: 0 },      // Mid Left
+            { x: 1.4, y: -0.3, z: 0 },       // Mid Right
+            { x: -1.4, y: -0.3, z: -2.0 },   // Rear Left
+            { x: 1.4, y: -0.3, z: -2.0 }     // Rear Right
         ],
 
         // Handling (slow but powerful)
@@ -106,29 +108,39 @@ const VEHICLE_CONFIG = {
     },
 
     HELICOPTER: {
-        // Fuselage dimensions
-        fuselageWidth: 1.2,
-        fuselageHeight: 1.5,
-        fuselageLength: 4.0,
+        // Fuselage dimensions (half-extents)
+        fuselageWidth: 1.0,
+        fuselageHeight: 1.2,
+        fuselageLength: 3.5,
         fuselageMass: 2000,
+
+        // Landing skid configuration
+        skids: {
+            width: 1.4,           // Distance between skids
+            length: 2.5,          // Length of each skid
+            height: 0.08,         // Thickness of skid tube
+            dropHeight: 1.2       // Distance below fuselage center
+        },
 
         // Rotor system
         rotor: {
             maxRPM: 400,
-            idleRPM: 50,
-            spoolUpRate: 40,        // RPM per second when throttle up
-            spoolDownRate: 60,      // RPM per second when throttle down
-            liftThreshold: 0.6,     // 60% RPM required for lift
-            maxLiftForce: 35000,    // Force at max RPM
-            rotorRadius: 5.0
+            idleRPM: 0,           // Engine off = 0 RPM
+            spoolUpRate: 50,      // RPM per second when holding throttle up
+            spoolDownRate: 35,    // RPM per second when holding throttle down
+            liftThreshold: 0.55,  // 55% RPM required for meaningful lift
+            maxLiftForce: 35000,  // Force at max RPM
+            rotorRadius: 5.0,
+            controlMinRPM: 0.2    // 20% RPM for any control response
         },
 
         // Flight controls sensitivity
         controls: {
-            pitchRate: 1.5,         // Radians per second at full input
-            rollRate: 1.8,
-            yawRate: 1.2,
-            collectiveSensitivity: 0.5
+            pitchRate: 1.8,         // Radians per second at full input
+            rollRate: 2.0,
+            yawRate: 1.4,
+            collectiveSensitivity: 0.5,
+            groundedDamping: 0.1    // Reduced control response on ground
         },
 
         // Aerodynamic damping
@@ -253,9 +265,10 @@ export default class Vehicle {
         // Helicopter state
         if (type === 'HELICOPTER') {
             this.currentRPM = 0;
-            this.targetRPM = this.config.rotor.idleRPM;
+            this.targetRPM = 0;  // Engine starts off
             this.collectiveInput = 0;
             this.isEngineRunning = false;
+            this.isGrounded = true;
         }
 
         // Tank state
@@ -334,10 +347,11 @@ export default class Vehicle {
 
     createHelicopter(position) {
         const cfg = this.config;
+        const skids = cfg.skids;
 
-        // Create fuselage
+        // Create fuselage - spawn lower since we have skids now
         const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-            .setTranslation(position.x, position.y + 5, position.z)
+            .setTranslation(position.x, position.y + skids.dropHeight + 0.5, position.z)
             .setLinearDamping(cfg.linearDamping)
             .setAngularDamping(cfg.angularDamping)
             .setAdditionalMass(cfg.fuselageMass);
@@ -359,18 +373,72 @@ export default class Vehicle {
 
         // Main fuselage collider
         const fuselageCollider = RAPIER.ColliderDesc.cuboid(
-            cfg.fuselageWidth,
-            cfg.fuselageHeight * 0.5,
-            cfg.fuselageLength * 0.4
+            cfg.fuselageWidth * 0.5,
+            cfg.fuselageHeight * 0.4,
+            cfg.fuselageLength * 0.35
         ).setFriction(0.5);
 
-        this.world.createCollider(fuselageCollider, this.chassis);
+        const mainCollider = this.world.createCollider(fuselageCollider, this.chassis);
+        this.colliders.push(mainCollider);
 
         // Tail boom collider
-        const tailCollider = RAPIER.ColliderDesc.cuboid(0.2, 0.2, cfg.fuselageLength * 0.3)
-            .setTranslation(0, 0, -cfg.fuselageLength * 0.5);
+        const tailCollider = RAPIER.ColliderDesc.cuboid(0.15, 0.15, cfg.fuselageLength * 0.25)
+            .setTranslation(0, 0.1, -cfg.fuselageLength * 0.45)
+            .setFriction(0.3);
 
-        this.world.createCollider(tailCollider, this.chassis);
+        const tailCol = this.world.createCollider(tailCollider, this.chassis);
+        this.colliders.push(tailCol);
+
+        // Landing skid colliders - two parallel tubes below the fuselage
+        const skidHalfWidth = skids.width / 2;
+        const skidHalfLength = skids.length / 2;
+
+        // Left skid (cylinder approximated as capsule lying on side, or use box)
+        const leftSkidCollider = RAPIER.ColliderDesc.cuboid(
+            skids.height,           // Half-width (thin tube)
+            skids.height,           // Half-height (thin tube)
+            skidHalfLength          // Half-length
+        ).setTranslation(-skidHalfWidth, -skids.dropHeight, 0)
+         .setFriction(0.8)
+         .setRestitution(0.1);
+
+        const leftSkid = this.world.createCollider(leftSkidCollider, this.chassis);
+        this.colliders.push(leftSkid);
+
+        // Right skid
+        const rightSkidCollider = RAPIER.ColliderDesc.cuboid(
+            skids.height,
+            skids.height,
+            skidHalfLength
+        ).setTranslation(skidHalfWidth, -skids.dropHeight, 0)
+         .setFriction(0.8)
+         .setRestitution(0.1);
+
+        const rightSkid = this.world.createCollider(rightSkidCollider, this.chassis);
+        this.colliders.push(rightSkid);
+
+        // Cross-bars connecting skids (front and back)
+        const crossBarCollider = RAPIER.ColliderDesc.cuboid(
+            skidHalfWidth,
+            skids.height * 0.5,
+            skids.height
+        ).setFriction(0.6);
+
+        // Front crossbar
+        const frontCross = this.world.createCollider(
+            crossBarCollider.setTranslation(0, -skids.dropHeight + 0.1, skidHalfLength * 0.7),
+            this.chassis
+        );
+        this.colliders.push(frontCross);
+
+        // Back crossbar
+        const backCross = this.world.createCollider(
+            RAPIER.ColliderDesc.cuboid(skidHalfWidth, skids.height * 0.5, skids.height)
+                .setTranslation(0, -skids.dropHeight + 0.1, -skidHalfLength * 0.7)
+                .setFriction(0.6),
+            this.chassis
+        );
+        this.colliders.push(backCross);
 
         this.bodies.push(this.chassis);
     }
@@ -391,6 +459,7 @@ export default class Vehicle {
         if (!this.chassis) return;
 
         const cfg = this.config;
+        const susp = cfg.suspension;
         const chassisPos = this.chassis.translation();
         const chassisRot = this.chassis.rotation();
         const chassisVel = this.chassis.linvel();
@@ -404,82 +473,102 @@ export default class Vehicle {
         let totalGroundedWheels = 0;
 
         this.suspensionState.forEach((wheel, index) => {
-            // Calculate world position of suspension point
+            // Calculate world position of suspension mount point
             const localPos = wheel.position;
-            const worldPos = add(chassisPos, rotateVectorByQuat(localPos, chassisRot));
+            const worldMountPos = add(chassisPos, rotateVectorByQuat(localPos, chassisRot));
 
-            // Raycast downward from suspension mount
-            const rayOrigin = { x: worldPos.x, y: worldPos.y + 0.5, z: worldPos.z };
-            const rayDir = scale(localUp, -1);
-            const maxRayLength = cfg.suspension.restLength + cfg.suspension.maxTravel + cfg.suspension.wheelRadius + 0.5;
+            // Raycast downward from slightly above the mount point (in world up direction)
+            const rayStartOffset = 0.1; // Small offset above mount
+            const rayOrigin = add(worldMountPos, scale(localUp, rayStartOffset));
+            const rayDir = scale(localUp, -1); // Always cast in local down direction
+
+            // Total ray length: offset + rest length + max travel + wheel radius + small buffer
+            const maxRayLength = rayStartOffset + susp.restLength + susp.maxTravel + susp.wheelRadius + 0.2;
 
             const ray = new RAPIER.Ray(rayOrigin, rayDir);
             const hit = this.world.castRay(ray, maxRayLength, true, undefined, undefined, this.chassisCollider);
 
             if (hit) {
                 const hitDistance = hit.timeOfImpact;
-                const hitPoint = add(rayOrigin, scale(rayDir, hitDistance));
 
-                // Calculate suspension compression
-                const suspensionLength = hitDistance - cfg.suspension.wheelRadius - 0.5;
-                const compression = cfg.suspension.restLength - suspensionLength;
+                // Calculate actual suspension length (distance from mount to wheel contact - wheel radius)
+                // The hit distance includes our rayStartOffset, so subtract it
+                const groundDistance = hitDistance - rayStartOffset;
+                const suspensionLength = groundDistance - susp.wheelRadius;
 
-                if (compression > 0 && compression < cfg.suspension.maxTravel + 0.1) {
-                    wheel.isGrounded = true;
-                    wheel.groundPoint = hitPoint;
-                    totalGroundedWheels++;
+                // Compression is how much the spring is compressed from rest length
+                const compression = susp.restLength - suspensionLength;
 
-                    // Get ground normal
-                    const hitCollider = this.world.getCollider(hit.collider);
-                    if (hitCollider) {
-                        // Approximate normal from raycast
-                        wheel.groundNormal = { x: 0, y: 1, z: 0 };
+                if (compression > -0.05 && compression <= susp.maxTravel + 0.1) {
+                    // Wheel is in valid range (slight extension allowed for smooth transitions)
+                    wheel.isGrounded = compression >= 0;
+
+                    if (wheel.isGrounded) {
+                        totalGroundedWheels++;
+                        const hitPoint = add(rayOrigin, scale(rayDir, hitDistance));
+                        wheel.groundPoint = hitPoint;
+
+                        // Calculate compression velocity for damping
+                        const compressionVelocity = (compression - wheel.previousCompression) / dt;
+
+                        // Hooke's Law: F = k * x + b * v
+                        // Spring force pushes up when compressed, damper resists velocity
+                        const springForce = susp.springStiffness * Math.max(0, compression);
+                        const damperForce = susp.damperStrength * compressionVelocity;
+
+                        // Total force (spring always positive when compressed, damper can be negative)
+                        const totalForce = Math.max(0, springForce + damperForce);
+
+                        // Apply suspension force at the wheel contact point in world up direction
+                        const forceVector = scale(localUp, totalForce);
+                        this.chassis.applyImpulseAtPoint(
+                            scale(forceVector, dt),
+                            worldMountPos,
+                            true
+                        );
+
+                        wheel.compression = compression;
+                    } else {
+                        wheel.compression = 0;
                     }
 
-                    // Calculate compression velocity
-                    const compressionVelocity = (compression - wheel.previousCompression) / dt;
                     wheel.previousCompression = compression;
-
-                    // Hooke's Law: F = -k * x - b * v
-                    // Spring force pushes up, damper resists velocity
-                    const springForce = cfg.suspension.springStiffness * compression;
-                    const damperForce = cfg.suspension.damperStrength * compressionVelocity;
-                    const totalForce = springForce + damperForce;
-
-                    // Apply suspension force at wheel position
-                    const forceVector = scale(localUp, Math.max(0, totalForce));
-                    this.chassis.applyImpulseAtPoint(
-                        scale(forceVector, dt),
-                        worldPos,
-                        true
-                    );
-
-                    wheel.compression = compression;
                 } else {
                     wheel.isGrounded = false;
                     wheel.compression = 0;
-                    wheel.previousCompression = 0;
+                    wheel.previousCompression = wheel.previousCompression * 0.9; // Decay smoothly
                 }
             } else {
                 wheel.isGrounded = false;
                 wheel.compression = 0;
-                wheel.previousCompression = 0;
+                wheel.previousCompression = wheel.previousCompression * 0.9;
             }
         });
 
         // Apply lateral grip (anti-slip) for grounded wheels
         if (totalGroundedWheels > 0) {
             const lateralVelocity = dot(chassisVel, localRight);
-            const gripForce = -lateralVelocity * cfg.lateralGrip * this.chassis.mass() / totalGroundedWheels;
 
-            // Apply grip force at each grounded wheel
-            this.suspensionState.forEach((wheel, index) => {
-                if (wheel.isGrounded) {
-                    const worldPos = add(chassisPos, rotateVectorByQuat(wheel.position, chassisRot));
-                    const forceVector = scale(localRight, gripForce * dt);
-                    this.chassis.applyImpulseAtPoint(forceVector, worldPos, true);
-                }
-            });
+            // Only apply significant grip force if there's lateral movement
+            if (Math.abs(lateralVelocity) > 0.01) {
+                const gripForce = -lateralVelocity * cfg.lateralGrip * this.chassis.mass();
+
+                // Distribute force among grounded wheels
+                this.suspensionState.forEach((wheel) => {
+                    if (wheel.isGrounded) {
+                        const worldPos = add(chassisPos, rotateVectorByQuat(wheel.position, chassisRot));
+                        const forceVector = scale(localRight, (gripForce / totalGroundedWheels) * dt);
+                        this.chassis.applyImpulseAtPoint(forceVector, worldPos, true);
+                    }
+                });
+            }
+        }
+
+        // Apply rolling resistance when on ground
+        if (totalGroundedWheels > 0) {
+            const forwardVelocity = dot(chassisVel, localForward);
+            const rollingResistance = -forwardVelocity * 0.02 * this.chassis.mass() * dt;
+            this.chassis.applyImpulse(scale(localForward, rollingResistance), true);
         }
     }
 
@@ -488,12 +577,29 @@ export default class Vehicle {
 
         const cfg = this.config;
         const rotor = cfg.rotor;
+        const skids = cfg.skids;
 
-        // Update RPM based on target (simulates engine inertia)
-        if (this.currentRPM < this.targetRPM) {
-            this.currentRPM = Math.min(this.currentRPM + rotor.spoolUpRate * dt, this.targetRPM);
-        } else if (this.currentRPM > this.targetRPM) {
-            this.currentRPM = Math.max(this.currentRPM - rotor.spoolDownRate * dt, this.targetRPM);
+        // Ground detection - raycast from center downward
+        const chassisPos = this.chassis.translation();
+        const chassisRot = this.chassis.rotation();
+        const localUp = rotateVectorByQuat({ x: 0, y: 1, z: 0 }, chassisRot);
+
+        const groundRay = new RAPIER.Ray(chassisPos, { x: 0, y: -1, z: 0 });
+        const groundHit = this.world.castRay(groundRay, skids.dropHeight + 0.5, true);
+        this.isGrounded = groundHit && groundHit.timeOfImpact < skids.dropHeight + 0.3;
+
+        // RPM naturally decays when no throttle input (engine inertia simulation)
+        // The actual throttle control happens in applyHelicopterInput
+        if (!this.isEngineRunning && this.currentRPM > 0) {
+            // Engine off - RPM decays from drag
+            this.currentRPM = Math.max(0, this.currentRPM - rotor.spoolDownRate * 0.5 * dt);
+        }
+
+        // Smoothly approach target RPM
+        const rpmDiff = this.targetRPM - this.currentRPM;
+        if (Math.abs(rpmDiff) > 0.1) {
+            const rate = rpmDiff > 0 ? rotor.spoolUpRate : rotor.spoolDownRate;
+            this.currentRPM += Math.sign(rpmDiff) * Math.min(Math.abs(rpmDiff), rate * dt);
         }
 
         // Calculate lift based on RPM
@@ -505,11 +611,6 @@ export default class Vehicle {
             const liftForce = effectiveRatio * effectiveRatio * rotor.maxLiftForce;
 
             // Apply lift relative to helicopter's up vector
-            const chassisRot = this.chassis.rotation();
-            const localUp = rotateVectorByQuat({ x: 0, y: 1, z: 0 }, chassisRot);
-
-            // Base lift counters gravity when at hover
-            const gravityCompensation = this.chassis.mass() * 9.81;
             const totalLift = liftForce * (1.0 + this.collectiveInput * 0.5);
 
             this.chassis.applyImpulse(scale(localUp, totalLift * dt), true);
@@ -522,6 +623,14 @@ export default class Vehicle {
             const dragCoeff = 0.05;
             const dragForce = scale(normalize(vel), -dragCoeff * speed * speed * dt);
             this.chassis.applyImpulse(dragForce, true);
+        }
+
+        // Apply rotational drag (air resistance to rotation)
+        const angVel = this.chassis.angvel();
+        const angSpeed = magnitude(angVel);
+        if (angSpeed > 0.01) {
+            const rotDrag = scale(angVel, -0.3 * dt);
+            this.chassis.applyTorqueImpulse(rotDrag, true);
         }
     }
 
@@ -669,60 +778,83 @@ export default class Vehicle {
         const rotor = cfg.rotor;
         const controls = cfg.controls;
 
-        // Engine controls
-        // Space = throttle up, Shift = throttle down
+        // Gradual throttle control
+        // Space (throttleUp) = increase RPM while held
+        // Shift (throttleDown) = decrease RPM while held
         if (input.throttleUp) {
-            this.targetRPM = rotor.maxRPM;
+            this.targetRPM = Math.min(rotor.maxRPM, this.targetRPM + rotor.spoolUpRate * dt);
             this.isEngineRunning = true;
         } else if (input.throttleDown) {
-            this.targetRPM = rotor.idleRPM;
+            this.targetRPM = Math.max(0, this.targetRPM - rotor.spoolDownRate * dt);
+            // Engine is "off" when target is at 0
+            if (this.targetRPM <= 0) {
+                this.isEngineRunning = false;
+            }
         }
+        // When neither pressed, target RPM stays where it is (maintains throttle)
 
         // Collective (additional lift) from vertical input when flying
         this.collectiveInput = input.collective || 0;
 
-        // Only apply flight controls if RPM is sufficient
+        // Get control inputs - these are in helicopter-local space
+        const pitchInput = input.pitch || 0;    // W/S
+        const rollInput = input.roll || 0;      // A/D
+        const yawInput = input.yaw || 0;        // Z/C
+
+        // Calculate control effectiveness based on RPM
         const rpmRatio = this.currentRPM / rotor.maxRPM;
-        if (rpmRatio < rotor.liftThreshold) return;
 
-        const controlEffectiveness = (rpmRatio - rotor.liftThreshold) / (1.0 - rotor.liftThreshold);
+        // Controls work at any RPM, but effectiveness scales with rotor speed
+        // Below controlMinRPM: very weak (rotor barely spinning)
+        // Above controlMinRPM: scales up to full effectiveness at max RPM
+        let controlEffectiveness = 0;
+        if (rpmRatio >= rotor.controlMinRPM) {
+            // Scale from controlMinRPM to 1.0
+            controlEffectiveness = (rpmRatio - rotor.controlMinRPM) / (1.0 - rotor.controlMinRPM);
+            controlEffectiveness = Math.min(1.0, controlEffectiveness);
+        } else if (rpmRatio > 0) {
+            // Below minimum, very weak response (rotor barely turning)
+            controlEffectiveness = rpmRatio / rotor.controlMinRPM * 0.15;
+        }
 
-        // W/S = Pitch
-        const pitchInput = input.pitch || 0;
-        // A/D = Roll
-        const rollInput = input.roll || 0;
-        // Z/C = Yaw (Anti-torque)
-        const yawInput = input.yaw || 0;
+        // When grounded, reduce control response significantly
+        // (can't pitch/roll much when sitting on skids)
+        if (this.isGrounded) {
+            controlEffectiveness *= controls.groundedDamping;
+        }
 
+        // Get local direction vectors
         const chassisRot = this.chassis.rotation();
         const localForward = rotateVectorByQuat({ x: 0, y: 0, z: 1 }, chassisRot);
         const localRight = rotateVectorByQuat({ x: 1, y: 0, z: 0 }, chassisRot);
         const localUp = rotateVectorByQuat({ x: 0, y: 1, z: 0 }, chassisRot);
 
-        // Apply cyclic controls (pitch and roll)
+        // Apply cyclic controls (pitch and roll) - physics-based torques
         const pitchTorque = pitchInput * controls.pitchRate * controlEffectiveness;
         const rollTorque = rollInput * controls.rollRate * controlEffectiveness;
         const yawTorque = yawInput * controls.yawRate * controlEffectiveness;
 
-        // Convert to world-space torques
+        // Convert to world-space torques applied in local axes
         const worldPitchTorque = scale(localRight, pitchTorque * this.chassis.mass() * dt);
         const worldRollTorque = scale(localForward, rollTorque * this.chassis.mass() * dt);
         const worldYawTorque = scale(localUp, yawTorque * this.chassis.mass() * dt);
 
         this.chassis.applyTorqueImpulse(add(add(worldPitchTorque, worldRollTorque), worldYawTorque), true);
 
-        // Cyclic tilt affects movement direction
-        // Tilting forward/back creates forward/back thrust
-        const tiltThrust = cfg.rotor.maxLiftForce * 0.15 * controlEffectiveness;
+        // Cyclic tilt affects movement direction (only when airborne and above lift threshold)
+        if (!this.isGrounded && rpmRatio >= rotor.liftThreshold) {
+            const effectiveLiftRatio = (rpmRatio - rotor.liftThreshold) / (1.0 - rotor.liftThreshold);
+            const tiltThrust = rotor.maxLiftForce * 0.15 * effectiveLiftRatio;
 
-        if (Math.abs(pitchInput) > 0.1) {
-            const thrustDir = scale(localForward, -pitchInput * tiltThrust * dt);
-            this.chassis.applyImpulse(thrustDir, true);
-        }
+            if (Math.abs(pitchInput) > 0.1) {
+                const thrustDir = scale(localForward, -pitchInput * tiltThrust * dt);
+                this.chassis.applyImpulse(thrustDir, true);
+            }
 
-        if (Math.abs(rollInput) > 0.1) {
-            const thrustDir = scale(localRight, rollInput * tiltThrust * dt);
-            this.chassis.applyImpulse(thrustDir, true);
+            if (Math.abs(rollInput) > 0.1) {
+                const thrustDir = scale(localRight, rollInput * tiltThrust * dt);
+                this.chassis.applyImpulse(thrustDir, true);
+            }
         }
     }
 
@@ -775,7 +907,9 @@ export default class Vehicle {
             baseData.rpm = this.currentRPM;
             baseData.maxRpm = this.config.rotor.maxRPM;
             baseData.rpmRatio = this.currentRPM / this.config.rotor.maxRPM;
+            baseData.targetRpm = this.targetRPM;
             baseData.isEngineRunning = this.isEngineRunning;
+            baseData.isGrounded = this.isGrounded;
         }
 
         if (this.type === 'JEEP' || this.type === 'TANK') {

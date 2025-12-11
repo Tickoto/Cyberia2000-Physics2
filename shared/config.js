@@ -49,20 +49,23 @@ export const renderingConfig = {
 /**
  * Vehicle Physics Configuration
  * Defines physics parameters for all vehicle types
+ * Note: Primary source is server/Vehicle.js - this is for client reference
  */
 export const vehicleConfig = {
     // JEEP - Light agile vehicle with raycast suspension
     JEEP: {
         mass: 800,
-        centerOfMass: { x: 0, y: -1.0, z: 0 },
+        centerOfMass: { x: 0, y: -0.3, z: 0 },
         maxSpeed: 28,
         engineForce: 12000,
         steerAngle: 0.6,
         suspension: {
-            springStiffness: 35000,  // k in Hooke's Law
-            damperStrength: 4500,    // b in Hooke's Law
-            restLength: 0.6,
-            maxTravel: 0.4
+            springStiffness: 45000,  // k in Hooke's Law
+            damperStrength: 5500,    // b in Hooke's Law
+            restLength: 0.5,
+            maxTravel: 0.35,
+            wheelRadius: 0.35,
+            mountHeight: -0.2
         },
         lateralGrip: 0.85,
         seatCount: 4
@@ -71,15 +74,17 @@ export const vehicleConfig = {
     // TANK - Heavy armored vehicle with differential steering
     TANK: {
         mass: 8000,  // 10x heavier than jeep
-        centerOfMass: { x: 0, y: -1.2, z: 0 },
+        centerOfMass: { x: 0, y: -0.4, z: 0 },
         maxSpeed: 14,
         engineForce: 80000,
         neutralTurnTorque: 120000,
         suspension: {
-            springStiffness: 120000,
-            damperStrength: 15000,
-            restLength: 0.5,
-            maxTravel: 0.3
+            springStiffness: 180000,
+            damperStrength: 22000,
+            restLength: 0.45,
+            maxTravel: 0.25,
+            wheelRadius: 0.4,
+            mountHeight: -0.3
         },
         lateralGrip: 0.95,
         microSlipThreshold: 0.1,
@@ -87,21 +92,29 @@ export const vehicleConfig = {
         seatCount: 2
     },
 
-    // HELICOPTER - RPM-based lift simulation
+    // HELICOPTER - RPM-based lift simulation with physics-based controls
     HELICOPTER: {
         mass: 2000,
+        skids: {
+            width: 1.4,
+            length: 2.5,
+            height: 0.08,
+            dropHeight: 1.2
+        },
         rotor: {
             maxRPM: 400,
-            idleRPM: 50,
-            spoolUpRate: 40,      // RPM per second
-            spoolDownRate: 60,
-            liftThreshold: 0.6,   // 60% RPM for lift
-            maxLiftForce: 35000
+            idleRPM: 0,           // Engine off = 0 RPM
+            spoolUpRate: 50,      // RPM per second when holding throttle up
+            spoolDownRate: 35,    // RPM per second when holding throttle down
+            liftThreshold: 0.55,  // 55% RPM for lift
+            maxLiftForce: 35000,
+            controlMinRPM: 0.2    // 20% RPM for any control response
         },
         controls: {
-            pitchRate: 1.5,
-            rollRate: 1.8,
-            yawRate: 1.2
+            pitchRate: 1.8,
+            rollRate: 2.0,
+            yawRate: 1.4,
+            groundedDamping: 0.1
         },
         linearDamping: 0.3,
         angularDamping: 2.5,
