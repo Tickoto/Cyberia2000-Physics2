@@ -51,6 +51,22 @@
         </label>
         <div class="hint">Use the slider to increase the cadence of the walk/run loops.</div>
         <div class="hint">New poses: breathing, stretch, crouch, combat idle, and look-around.</div>
+        
+        <label for="outfit-select" style="margin-top: 10px;">Outfit</label>
+        <select id="outfit-select" style="width: 100%; background: #0f1724; color: #fff; border: 1px solid #213046; padding: 4px;">
+            <option value="DEFAULT">Default</option>
+            <option value="STREET">Street Rat</option>
+            <option value="ARMOR">Heavy Armor</option>
+            <option value="CORPO">Corpo Suit</option>
+        </select>
+
+        <label for="hair-select" style="margin-top: 10px;">Hair Style</label>
+        <select id="hair-select" style="width: 100%; background: #0f1724; color: #fff; border: 1px solid #213046; padding: 4px;">
+            <option value="DEFAULT">Standard</option>
+            <option value="MOHAWK">Mohawk</option>
+            <option value="BUZZ">Buzz Cut</option>
+            <option value="PONYTAIL">Ponytail</option>
+        </select>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
@@ -83,12 +99,37 @@
         const grid = new THREE.GridHelper(16, 16, 0x1f4b99, 0x0e203f);
         scene.add(grid);
 
-        const character = new ModelRig();
+        let character = new ModelRig();
         scene.add(character.group);
         character.group.position.set(0, 0, 0);
+        
         let currentState = 'idle';
         let speedScale = Number(document.getElementById('speed').value);
         let autoRotate = document.getElementById('auto-rotate').checked;
+        let currentOutfit = 'DEFAULT';
+        let currentHair = 'DEFAULT';
+
+        const updateModel = () => {
+            const oldGroup = character.group;
+            scene.remove(oldGroup);
+            
+            character = new ModelRig({ 
+                outfit: currentOutfit, 
+                hairStyle: currentHair 
+            });
+            scene.add(character.group);
+            character.setAnimation(currentState);
+        };
+
+        document.getElementById('outfit-select').addEventListener('change', (e) => {
+            currentOutfit = e.target.value;
+            updateModel();
+        });
+
+        document.getElementById('hair-select').addEventListener('change', (e) => {
+            currentHair = e.target.value;
+            updateModel();
+        });
 
         const stateContainer = document.getElementById('state-buttons');
         const stateButtons = [];

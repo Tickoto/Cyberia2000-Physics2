@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyberia 2000 - RELOADED</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+        :root {
+            --primary: #0f0;
+            --bg-glass: rgba(0, 20, 0, 0.65);
+            --border-tech: 1px solid #0f0;
+        }
+
+        body { 
+            margin: 0; overflow: hidden; background-color: #000;
+            font-family: 'VT323', monospace; color: var(--primary);
+            text-transform: uppercase;
+        }
+
+        /* CRT Scanline Overlay */
+        body::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 9999;
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+
+        /* Unit Frame (Top Left) */
+        #unit-frame {
+            position: absolute; top: 20px; left: 20px;
+            width: 300px; padding: 10px;
+            background: var(--bg-glass);
+            border: var(--border-tech);
+            border-left: 5px solid var(--primary);
+            clip-path: polygon(0 0, 100% 0, 95% 100%, 0% 100%);
+        }
+        .bar-container { position: relative; width: 100%; height: 20px; background: #111; margin-bottom: 5px; border: 1px solid #333; }
+        .bar-fill { height: 100%; transition: width 0.2s; }
+        #hp-bar { background: linear-gradient(90deg, #c00, #f00); width: 100%; }
+        #mp-bar { background: linear-gradient(90deg, #00c, #00f); width: 80%; }
+        .bar-text { position: absolute; top: 0; width: 100%; text-align: center; line-height: 20px; color: #fff; text-shadow: 1px 1px 0 #000; }
+        #player-name { font-size: 24px; margin-bottom: 5px; color: #fff; text-shadow: 0 0 5px var(--primary); }
+
+        /* MiniMap (Top Right) */
+        #minimap-container {
+            position: absolute; top: 50px; right: 20px;
+            width: 180px; height: 180px;
+            border: 3px solid var(--primary);
+            border-radius: 50%;
+            background: #000;
+            overflow: hidden;
+            box-shadow: 0 0 15px var(--primary);
+        }
+
+        #time-display {
+            position: absolute; top: 15px; right: 20px;
+            width: 180px;
+            text-align: center;
+            color: #fff;
+            font-size: 32px;
+            text-shadow: 0 0 5px var(--primary);
+        }
+
+        #biome-display {
+            position: absolute; top: 240px; right: 20px;
+            width: 180px;
+            text-align: center;
+            color: var(--primary);
+            font-size: 24px;
+            text-shadow: 0 0 5px #000;
+            background: rgba(0, 20, 0, 0.8);
+            border: 1px solid var(--primary);
+            padding: 5px;
+        }
+
+        /* Hotbar (Bottom Center) */
+        #hotbar {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 5px;
+            padding: 5px;
+            background: var(--bg-glass);
+            border: var(--border-tech);
+            border-top: 3px solid var(--primary);
+            pointer-events: auto;
+        }
+        .slot {
+            width: 48px; height: 48px;
+            border: 1px solid #0a0;
+            background: rgba(0,0,0,0.5);
+            display: flex; flex-direction: column; justify-content: space-between;
+            font-size: 12px; padding: 2px;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+        .slot:hover { border-color: #fff; background: rgba(0,50,0,0.8); }
+        .key-bind { color: #aaa; }
+        .item-icon { text-align: center; font-size: 20px; margin-top: 5px; }
+
+        /* Chat (Bottom Left) */
+        #chat-container {
+            position: absolute; bottom: 20px; left: 20px;
+            width: 400px; height: 300px;
+            background: transparent;
+            display: flex; flex-direction: column;
+            pointer-events: auto;
+            font-family: 'Courier New', Courier, monospace; /* More terminal-like */
+        }
+
+        .chat-tabs {
+            display: flex;
+            gap: 2px;
+            margin-bottom: -1px;
+            z-index: 10;
+        }
+
+        .chat-tab {
+            background: #0b1521;
+            color: #5a7a99;
+            border: 1px solid #1f3a52;
+            border-bottom: none;
+            padding: 4px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .chat-tab.active {
+            background: #122033;
+            color: #ffffff;
+            border-top: 2px solid #ffffff;
+        }
+
+        #chat-window {
+            flex-grow: 1;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #1a3b5c; /* Blue border */
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            padding: 5px;
+        }
+
+        #chat-messages {
+            flex-grow: 1; 
+            overflow-y: auto; 
+            padding: 5px;
+            color: #cccccc;
+            font-size: 14px;
+            scrollbar-width: thin;
+            scrollbar-color: #1f3a52 #000;
+        }
+
+        #chat-input-wrapper {
+            margin-top: 5px;
+            border: 2px solid #1a3b5c;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 5px;
+        }
+
+        #chat-input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+        }
+        #chat-input::placeholder { color: #555; }
+
+        /* Login Overlay */
+        #login-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 10000; pointer-events: auto;
+            background-image: radial-gradient(#003300 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .char-create-box {
+            display: flex;
+            width: 900px;
+            height: 600px;
+            background: #001100;
+            border: 2px solid var(--primary);
+            box-shadow: 0 0 50px var(--primary);
+            position: relative;
+        }
+
+        .preview-pane {
+            flex: 1;
+            background: linear-gradient(180deg, #050a0f 0%, #000 100%);
+            position: relative;
+            border-right: 1px solid var(--primary);
+            overflow: hidden;
+        }
+
+        #model-preview {
+            width: 100%;
+            height: 100%;
+        }
+
+        .controls-pane {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        /* Legacy login box style (kept for safety if needed) */
+        .login-box {
+            border: 2px solid var(--primary);
+            background: #001100;
+            padding: 40px; width: 500px;
+            box-shadow: 0 0 50px var(--primary);
+            position: relative;
+        }
+        .login-box::before {
+            content: "SYSTEM_ACCESS"; position: absolute; top: -12px; left: 20px;
+            background: #001100; padding: 0 10px; color: var(--primary);
+        }
+        h1 { font-size: 64px; margin: 0 0 30px 0; text-shadow: 0 0 10px var(--primary); text-align: center; }
+        
+        .input-group { margin-bottom: 15px; }
+        label { display: block; color: #8f8; font-size: 18px; margin-bottom: 5px; }
+        input[type="text"] {
+            width: 100%; background: #000; border: 1px solid #0f0; color: #fff;
+            padding: 8px; font-family: inherit; font-size: 20px; box-sizing: border-box;
+        }
+        input[type="color"] { width: 100%; height: 40px; border: 1px solid #0f0; background: #000; cursor: pointer; }
+        
+        button#join-btn {
+            width: 100%; background: var(--primary); color: #000; border: none;
+            padding: 15px; font-family: inherit; font-size: 24px; font-weight: bold;
+            cursor: pointer; margin-top: 20px;
+        }
+        button#join-btn:hover { background: #fff; box-shadow: 0 0 20px #fff; }
+
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "/node_modules/three/build/three.module.js",
+                "three/addons/": "/node_modules/three/examples/jsm/",
+                "socket.io-client": "/node_modules/socket.io/client-dist/socket.io.esm.min.js"
+            }
+        }
+    </script>
+    <script src="/node_modules/@geckos.io/snapshot-interpolation/bundle/snapshot-interpolation.js"></script>
+</head>
+<body>
+    <!-- LOGIN SCREEN -->
+    <div id="login-overlay">
+        <div class="char-create-box">
+            <div class="preview-pane">
+                <div id="model-preview"></div>
+                <div style="position: absolute; bottom: 10px; left: 10px; color: var(--primary); font-size: 14px; text-shadow: 0 0 5px var(--primary);">
+                    >> VIRTUAL REALITY INTERFACE INITIALIZED
+                </div>
+            </div>
+            <div class="controls-pane">
+                <h1 style="margin-bottom: 10px;">IDENTITY CREATION</h1>
+                <div style="text-align: center; color: #aaa; margin-bottom: 20px; font-size: 16px;">
+                    CONFIGURE YOUR DIGITAL AVATAR
+                </div>
+                
+                <div class="control-group">
+                    <label>CODENAME</label>
+                    <input type="text" id="username-input" placeholder="ENTER_ALIAS" maxlength="12">
+                </div>
+
+                <div class="control-group">
+                    <label>CLASS PROTOCOL</label>
+                    <select id="class-select" style="width: 100%; background: #111; border: 1px solid var(--primary); color: #fff; font-family: 'VT323'; font-size: 24px; padding: 5px; box-shadow: inset 0 0 5px var(--secondary);">
+                        <option value="SOLDIER">SOLDIER_UNIT</option>
+                        <option value="HACKER">NET_RUNNER</option>
+                        <option value="RUNNER">STREET_SAMURAI</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>OUTFIT MODEL</label>
+                    <select id="outfit-select" style="width: 100%; background: #111; border: 1px solid var(--primary); color: #fff; font-family: 'VT323'; font-size: 24px; padding: 5px; box-shadow: inset 0 0 5px var(--secondary);">
+                        <option value="DEFAULT">STD_ISSUE</option>
+                        <option value="STREET">STREET_RAT</option>
+                        <option value="ARMOR">HVY_ARMOR</option>
+                        <option value="CORPO">CORPO_SUIT</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>HAIR CONFIG</label>
+                    <select id="hair-style-select" style="width: 100%; background: #111; border: 1px solid var(--primary); color: #fff; font-family: 'VT323'; font-size: 24px; padding: 5px; box-shadow: inset 0 0 5px var(--secondary);">
+                        <option value="DEFAULT">STANDARD</option>
+                        <option value="MOHAWK">PUNK_CREST</option>
+                        <option value="BUZZ">MILITARY_CUT</option>
+                        <option value="PONYTAIL">TIED_BACK</option>
+                    </select>
+                </div>
+
+                <div class="control-group" style="display: flex; gap: 10px; align-items: center;">
+                    <div style="flex: 1;">
+                        <label>HAIR HUE</label>
+                        <input type="color" id="hair-color" value="#c54f5c">
+                    </div>
+                    <div style="flex: 1;">
+                        <label>DERMIS TONE</label>
+                        <input type="color" id="skin-color" value="#f7d6c2">
+                    </div>
+                </div>
+                <button id="join-btn">JACK IN</button>
+                <div style="position: absolute; bottom: 10px; right: 10px; color: var(--secondary); font-size: 14px;">
+                    >> CONNECTION ESTABLISHED
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="time-display">12:00</div>
+        <!-- Unit Frame -->
+        <div id="unit-frame">
+            <div id="player-name">GUEST</div>
+            <div class="bar-container"><div id="hp-bar" class="bar-fill" style="width: 100%"></div><div class="bar-text">HP</div></div>
+            <div class="bar-container"><div id="mp-bar" class="bar-fill" style="width: 100%"></div><div class="bar-text">MP</div></div>
+        </div>
+
+        <!-- Minimap -->
+        <div id="minimap-container">
+            <canvas id="minimap-canvas" width="180" height="180"></canvas>
+        </div>
+        <div id="biome-display">SCANNING...</div>
+
+        <!-- Hotbar -->
+        <div id="hotbar">
+            <div class="slot"><span class="key-bind">1</span><div class="item-icon">🔫</div></div>
+            <div class="slot"><span class="key-bind">2</span><div class="item-icon">🔪</div></div>
+            <div class="slot"><span class="key-bind">3</span><div class="item-icon">💊</div></div>
+            <div class="slot"><span class="key-bind">4</span><div class="item-icon">🔧</div></div>
+            <div class="slot"><span class="key-bind">5</span><div class="item-icon"></div></div>
+            <div class="slot"><span class="key-bind">6</span><div class="item-icon"></div></div>
+        </div>
+
+        <div id="interact-prompt">PRESS [E] TO INTERACT</div>
+
+        <div id="chat-container">
+            <div class="chat-tabs">
+                <div class="chat-tab active">Global</div>
+                <div class="chat-tab">Local</div>
+                <div class="chat-tab">Log</div>
+            </div>
+            <div id="chat-window">
+                <div id="chat-messages"></div>
+            </div>
+            <div id="chat-input-wrapper">
+                <input type="text" id="chat-input" placeholder="Press Enter to chat...">
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Game Script -->
+    <script type="module" src="/client/GameClient_v3.js"></script>
+</body>
+</html>

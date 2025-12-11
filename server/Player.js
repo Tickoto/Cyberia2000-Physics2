@@ -1,0 +1,175 @@
+import RAPIER from '@dimforge/rapier3d-compat';
+import NetworkManager from '../shared/NetworkManager.js';
+
+export default class Player {
+    constructor(socket, world, position = { x: 0, y: 10, z: 0 }, physicsSystems, physicsHandleMap) {
+        this.socket = socket;
+        this.id = socket.id;
+        this.world = world;
+        this.physicsSystems = physicsSystems;
+        this.physicsHandleMap = physicsHandleMap;
+        
+        // Persistence Data
+        this.data = {
+            position: position,
+            faction: 'NEUTRAL',
+            health: 100,
+            inventory: Array(20).fill(null) // 20 Slots
+        };
+
+        // Physics Initialization
+        this.initPhysics(position);
+    }
+
+    initPhysics(pos) {
+        // Kinematic Body for precise character control
+        const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
+            .setTranslation(pos.x, pos.y, pos.z);
+        this.rigidBody = this.world.createRigidBody(bodyDesc);
+
+        // Capsule Collider
+        // Total Height: 2.0m (0.5 segment half-height * 2 + 0.5 radius * 2)
+        // Offset y=1.0 puts the bottom of the capsule at the body origin (0,0,0)
+        const colliderDesc = RAPIER.ColliderDesc.capsule(0.5, 0.5)
+            .setTranslation(0, 1.0, 0); 
+        this.collider = this.world.createCollider(colliderDesc, this.rigidBody);
+
+        // Rapier Character Controller
+        // offset, autostep height, autostep min width, snap to ground, character mass
+        this.characterController = this.world.createCharacterController(0.01);
+        this.characterController.enableAutostep(0.5, 0.2, true); // Increased step height
+        this.characterController.enableSnapToGround(0.5);
+        
+        this.verticalVelocity = 0;
+    }
+
+    update(dt, input) {
+        // Input: { x, y, viewDir: {x, y, z}, jump: bool, interact: bool }
+        if (!input) return;
+
+        // Physics Constants
+        const speed = 10;
+        const gravity = -40.0; 
+        const jumpStrength = 25.0;
+        
+        // Ground Check
+        const isGrounded = this.characterController.computedGrounded();
+        
+        if (input.jump && isGrounded) {
+            this.verticalVelocity = jumpStrength;
+        } else if (isGrounded && this.verticalVelocity <= 0) {
+            this.verticalVelocity = -2.0; // Keep grounded
+        } else {
+            // Apply Gravity
+            this.verticalVelocity += gravity * dt;
+        }
+        
+        let movement = { 
+            x: (input.x || 0) * speed * dt, 
+            y: this.verticalVelocity * dt, 
+            z: (input.y || 0) * speed * dt 
+        };
+        
+        this.characterController.computeColliderMovement(
+            this.collider,
+            movement
+        );
+
+        // Apply movement to body
+        const correctedMovement = this.characterController.computedMovement();
+        const currentPos = this.rigidBody.translation();
+        const newPos = {
+            x: currentPos.x + correctedMovement.x,
+            y: currentPos.y + correctedMovement.y,
+            z: currentPos.z + correctedMovement.z
+        };
+
+        this.rigidBody.setNextKinematicTranslation(newPos);
+        
+        // Update persistent data
+        this.data.position = newPos;
+
+        // Interaction
+        if (input.interact) {
+            this.handleInteraction(input.viewDir);
+        }
+    }
+
+    handleInteraction(viewDir) {
+        const origin = this.rigidBody.translation();
+        // Adjust origin to eye height (approx 1.6m)
+        // Offset 0.6m forward to clear own capsule (radius 0.5)
+        const eyePos = { 
+            x: origin.x + viewDir.x * 0.6, 
+            y: origin.y + 1.6 + viewDir.y * 0.6, 
+            z: origin.z + viewDir.z * 0.6 
+        };
+        
+        const hit = this.physicsSystems.raycastInteract(eyePos, viewDir, 3.0);
+        
+        if (hit) {
+            const entity = this.physicsHandleMap ? this.physicsHandleMap.get(hit.bodyHandle) : null;
+            
+            if (entity && entity.type === 'VEHICLE') {
+                const v = entity.instance;
+                const seats = v.seats.map((s, i) => ({
+                    id: i,
+                    name: i === 0 ? 'Driver' : `Passenger ${i}`,
+                    occupied: s !== null
+                }));
+                
+                this.socket.emit(NetworkManager.Packet.INTERACT_MENU, {
+                    type: 'VEHICLE',
+                    vehicleType: v.type,
+                    health: v.health,
+                    maxHealth: v.maxHealth,
+                    seats: seats,
+                    targetId: v.id
+                });
+            } else {
+                // Generic hit (terrain or unknown)
+                // console.log(`Hit unknown handle ${hit.bodyHandle}`);
+            }
+        }
+    }
+
+    // --- Inventory System ---
+
+    addItem(itemId, count = 1, metadata = {}) {
+        // Stackable check could go here
+        // Find first empty slot
+        const emptyIndex = this.data.inventory.findIndex(slot => slot === null);
+        
+        if (emptyIndex !== -1) {
+            this.data.inventory[emptyIndex] = { itemId, count, metadata };
+            return true;
+        }
+        return false; // Inventory full
+    }
+
+    removeItem(slotIndex, count = 1) {
+        if (this.data.inventory[slotIndex]) {
+            this.data.inventory[slotIndex].count -= count;
+            if (this.data.inventory[slotIndex].count <= 0) {
+                this.data.inventory[slotIndex] = null;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    useItem(slotIndex) {
+        const item = this.data.inventory[slotIndex];
+        if (item) {
+            console.log(`Used item: ${item.itemId}`);
+            // Item effect logic here
+            // e.g., if (item.itemId === 'potion') this.data.health += 20;
+            return true;
+        }
+        return false;
+    }
+
+    toJSON() {
+        return this.data;
+    }
+}

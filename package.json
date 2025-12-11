@@ -1,0 +1,22 @@
+{
+  "name": "cyberia2000-mmo",
+  "version": "0.1.0",
+  "description": "High-performance Node.js/Three.js/Rapier.js MMO",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "three": "^0.158.0",
+    "@dimforge/rapier3d-compat": "^0.11.2",
+    "simplex-noise": "^4.0.1",
+    "@geckos.io/snapshot-interpolation": "^1.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}

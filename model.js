@@ -2,6 +2,8 @@
 // The module exposes a ModelRig class that builds the model and runs animations without
 // relying on any other project files.
 
+import * as THREE from 'three';
+
 const {
     Group,
     Mesh,
@@ -203,26 +205,54 @@ const createBackSigilTexture = (accent = '#d11111') => {
     return tex;
 };
 
-const MATERIALS = {
-    skin: new MeshStandardMaterial({ color: new Color('#f7d8c2'), roughness: 0.55 }),
-    skinShadow: new MeshStandardMaterial({ color: new Color('#d6b59f'), roughness: 0.6 }),
-    face: new MeshStandardMaterial({ map: createFaceTexture(), roughness: 0.4 }),
-    hair: new MeshStandardMaterial({ color: new Color('#c54f5c'), roughness: 0.35 }),
-    jacket: new MeshStandardMaterial({ color: new Color('#121620'), roughness: 0.4, metalness: 0.1 }),
-    jacketDetail: new MeshStandardMaterial({ color: new Color('#1b2538'), roughness: 0.42 }),
-    jacketEmblem: new MeshStandardMaterial({ color: new Color('#ffffff'), roughness: 0.32, metalness: 0.08, transparent: true, map: createBackSigilTexture(), emissive: new Color('#b01010'), emissiveIntensity: 0.55, side: DoubleSide }),
-    shirt: new MeshStandardMaterial({ color: new Color('#a8202a'), roughness: 0.48 }),
-    pants: new MeshStandardMaterial({ color: new Color('#243957'), roughness: 0.6 }),
-    boots: new MeshStandardMaterial({ color: new Color('#0c0c0e'), roughness: 0.65 }),
-    holster: new MeshStandardMaterial({ color: new Color('#0a0a0a'), roughness: 0.55 }),
-    accent: new MeshStandardMaterial({ color: new Color('#0d1118'), roughness: 0.6, metalness: 0.12 })
+const createMaterials = (options = {}) => {
+    const skinColor = options.skin || new Color('#f7d8c2');
+    const hairColor = options.hair || new Color('#c54f5c');
+    
+    // Outfit Palette Presets
+    let palette = {
+        jacket: '#121620',
+        shirt: '#a8202a',
+        pants: '#243957',
+        boots: '#0c0c0e',
+        holster: '#0a0a0a',
+        accent: '#0d1118'
+    };
+
+    if (options.outfit === 'CORPO') {
+        palette = { jacket: '#0a0a0a', shirt: '#ffffff', pants: '#0a0a0a', boots: '#000000', holster: '#1a1a1a', accent: '#333333' };
+    } else if (options.outfit === 'STREET') {
+        palette = { jacket: '#3a2e2a', shirt: '#202020', pants: '#1a1a1a', boots: '#2b2b2b', holster: '#4a3b32', accent: '#554433' };
+    } else if (options.outfit === 'ARMOR') {
+        palette = { jacket: '#2a2a2a', shirt: '#111111', pants: '#151515', boots: '#111111', holster: '#333333', accent: '#555555' };
+    }
+
+    return {
+        skin: new MeshStandardMaterial({ color: skinColor, roughness: 0.55 }),
+        skinShadow: new MeshStandardMaterial({ color: skinColor.clone().multiplyScalar(0.8), roughness: 0.6 }),
+        face: new MeshStandardMaterial({ map: createFaceTexture(skinColor.getStyle()), roughness: 0.4 }),
+        hair: new MeshStandardMaterial({ color: hairColor, roughness: 0.35 }),
+        jacket: new MeshStandardMaterial({ color: new Color(palette.jacket), roughness: 0.4, metalness: 0.1 }),
+        jacketDetail: new MeshStandardMaterial({ color: new Color(palette.jacket).multiplyScalar(1.2), roughness: 0.42 }),
+        jacketEmblem: new MeshStandardMaterial({ color: new Color('#ffffff'), roughness: 0.32, metalness: 0.08, transparent: true, map: createBackSigilTexture(), emissive: new Color('#b01010'), emissiveIntensity: 0.55, side: DoubleSide }),
+        shirt: new MeshStandardMaterial({ color: new Color(palette.shirt), roughness: 0.48 }),
+        pants: new MeshStandardMaterial({ color: new Color(palette.pants), roughness: 0.6 }),
+        boots: new MeshStandardMaterial({ color: new Color(palette.boots), roughness: 0.65 }),
+        holster: new MeshStandardMaterial({ color: new Color(palette.holster), roughness: 0.55 }),
+        accent: new MeshStandardMaterial({ color: new Color(palette.accent), roughness: 0.6, metalness: 0.12 })
+    };
 };
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export class ModelRig {
     constructor(options = {}) {
-        this.options = options;
+        this.options = {
+            hairStyle: 'DEFAULT',
+            outfit: 'DEFAULT',
+            ...options
+        };
+        this.materials = createMaterials(this.options);
         this.group = new Group();
         this.meshGroup = new Group();
         this.group.add(this.meshGroup);
@@ -239,6 +269,8 @@ export class ModelRig {
     }
 
     buildModel() {
+        const mats = this.materials;
+        const { hairStyle, outfit } = this.options;
         const storeBindPose = (mesh) => {
             this.bindPose.set(mesh, {
                 position: mesh.position.clone(),
@@ -248,20 +280,20 @@ export class ModelRig {
         };
         const hipWidth = 0.42;
         const waistWidth = 0.3;
-        const shoulderWidth = 0.38;
+        const shoulderWidth = outfit === 'ARMOR' ? 0.45 : 0.38;
 
-        const hips = new Mesh(new BoxGeometry(hipWidth, 0.22, 0.26), MATERIALS.pants);
+        const hips = new Mesh(new BoxGeometry(hipWidth, 0.22, 0.26), mats.pants);
         hips.position.y = this.baseHipHeight;
         this.meshGroup.add(hips);
         this.limbs.hips = hips;
         storeBindPose(hips);
 
-        const midriff = new Mesh(new BoxGeometry(waistWidth, 0.13, 0.2), MATERIALS.skin);
+        const midriff = new Mesh(new BoxGeometry(waistWidth, 0.13, 0.2), mats.skin);
         midriff.position.y = 0.17;
         hips.add(midriff);
         storeBindPose(midriff);
 
-        const bellyButton = new Mesh(new CircleGeometry(0.012, 16), MATERIALS.skinShadow);
+        const bellyButton = new Mesh(new CircleGeometry(0.012, 16), mats.skinShadow);
         bellyButton.rotation.x = -Math.PI / 2;
         bellyButton.position.set(0, 0.01, 0.101);
         midriff.add(bellyButton);
@@ -274,173 +306,196 @@ export class ModelRig {
         storeBindPose(chestGroup);
 
         const torsoWidth = shoulderWidth;
-        const shirt = new Mesh(new BoxGeometry(torsoWidth, 0.34, 0.22), MATERIALS.shirt);
+        const shirt = new Mesh(new BoxGeometry(torsoWidth, 0.34, 0.22), mats.shirt);
         shirt.position.y = 0.1;
         chestGroup.add(shirt);
         storeBindPose(shirt);
 
-        const chestDetail = new Mesh(new BoxGeometry(0.28, 0.14, 0.08), MATERIALS.shirt);
+        const chestDetail = new Mesh(new BoxGeometry(0.28, 0.14, 0.08), mats.shirt);
         chestDetail.position.set(0, 0.1, -0.11);
         chestGroup.add(chestDetail);
         storeBindPose(chestDetail);
 
-        const chestLeft = new Mesh(new BoxGeometry(0.12, 0.12, 0.06), MATERIALS.shirt);
-        chestLeft.position.set(-0.07, 0.09, -0.13);
-        chestGroup.add(chestLeft);
-        storeBindPose(chestLeft);
+        // Chest Armor / Jacket
+        if (outfit !== 'STREET') {
+            const jacketBack = new Mesh(new BoxGeometry(shoulderWidth + 0.04, 0.36, 0.06), mats.jacketDetail);
+            jacketBack.position.set(0, 0.1, 0.12);
+            chestGroup.add(jacketBack);
+            storeBindPose(jacketBack);
+            
+            const backSigil = new Mesh(new CircleGeometry(0.15, 64), mats.jacketEmblem);
+            backSigil.position.set(0, 0.0, jacketBack.geometry.parameters.depth * 0.5 + 0.001);
+            jacketBack.add(backSigil);
+            storeBindPose(backSigil);
+        }
 
-        const chestRight = new Mesh(new BoxGeometry(0.12, 0.12, 0.06), MATERIALS.shirt);
-        chestRight.position.set(0.07, 0.09, -0.13);
-        chestGroup.add(chestRight);
-        storeBindPose(chestRight);
-
-        const jacketBack = new Mesh(new BoxGeometry(shoulderWidth + 0.04, 0.36, 0.06), MATERIALS.jacketDetail);
-        jacketBack.position.set(0, 0.1, 0.12);
-        chestGroup.add(jacketBack);
-        storeBindPose(jacketBack);
-
-        const jacketL = new Mesh(new BoxGeometry(0.08, 0.36, 0.26), MATERIALS.jacket);
+        const jacketL = new Mesh(new BoxGeometry(0.08, 0.36, 0.26), mats.jacket);
         jacketL.position.set(shoulderWidth * 0.5 + 0.04, 0.1, 0);
         chestGroup.add(jacketL);
         storeBindPose(jacketL);
 
-        const jacketR = new Mesh(new BoxGeometry(0.08, 0.36, 0.26), MATERIALS.jacket);
+        const jacketR = new Mesh(new BoxGeometry(0.08, 0.36, 0.26), mats.jacket);
         jacketR.position.set(-shoulderWidth * 0.5 - 0.04, 0.1, 0);
         chestGroup.add(jacketR);
         storeBindPose(jacketR);
 
-        const collar = new Mesh(new BoxGeometry(shoulderWidth + 0.08, 0.08, 0.26), MATERIALS.jacket);
+        const collar = new Mesh(new BoxGeometry(shoulderWidth + 0.08, 0.08, 0.26), mats.jacket);
         collar.position.set(0, 0.3, 0.04);
         chestGroup.add(collar);
         storeBindPose(collar);
 
-        const neck = new Mesh(new BoxGeometry(0.12, 0.08, 0.12), MATERIALS.skin);
+        const neck = new Mesh(new BoxGeometry(0.12, 0.08, 0.12), mats.skin);
         neck.position.set(0, 0.32, 0.0);
         chestGroup.add(neck);
         storeBindPose(neck);
 
-        const headMaterials = [MATERIALS.skin, MATERIALS.skin, MATERIALS.skin, MATERIALS.skin, MATERIALS.skin, MATERIALS.face];
+        const headMaterials = [mats.skin, mats.skin, mats.skin, mats.skin, mats.skin, mats.face];
         const head = new Mesh(new BoxGeometry(0.24, 0.28, 0.24), headMaterials);
         head.position.y = 0.45;
         chestGroup.add(head);
         this.limbs.head = head;
         storeBindPose(head);
 
+        // HAIR LOGIC
         const hairGroup = new Group();
         head.add(hairGroup);
         storeBindPose(hairGroup);
 
-        const hairCap = new Mesh(new BoxGeometry(0.26, 0.12, 0.26), MATERIALS.hair);
+        const hairCap = new Mesh(new BoxGeometry(0.26, 0.12, 0.26), mats.hair);
         hairCap.position.y = 0.15;
         hairGroup.add(hairCap);
         storeBindPose(hairCap);
 
-        const hairBack = new Mesh(new BoxGeometry(0.28, 0.44, 0.08), MATERIALS.hair);
-        hairBack.position.set(0, -0.1, 0.13);
-        hairGroup.add(hairBack);
-        storeBindPose(hairBack);
+        if (hairStyle === 'MOHAWK') {
+            const mohawk = new Mesh(new BoxGeometry(0.08, 0.2, 0.28), mats.hair);
+            mohawk.position.set(0, 0.2, 0);
+            hairGroup.add(mohawk);
+            storeBindPose(mohawk);
+        } else if (hairStyle === 'PONYTAIL') {
+             // Standard back
+            const hairBack = new Mesh(new BoxGeometry(0.28, 0.3, 0.08), mats.hair);
+            hairBack.position.set(0, -0.05, 0.13);
+            hairGroup.add(hairBack);
+            storeBindPose(hairBack);
+            
+            // Tail
+            const tail = new Mesh(new BoxGeometry(0.1, 0.3, 0.1), mats.hair);
+            tail.position.set(0, 0, 0.18);
+            tail.rotation.x = 0.3;
+            hairGroup.add(tail);
+            storeBindPose(tail);
+        } else if (hairStyle === 'BUZZ') {
+            // Nothing extra
+        } else {
+            // DEFAULT
+            const hairBack = new Mesh(new BoxGeometry(0.28, 0.44, 0.08), mats.hair);
+            hairBack.position.set(0, -0.1, 0.13);
+            hairGroup.add(hairBack);
+            storeBindPose(hairBack);
 
-        const hairSideL = new Mesh(new BoxGeometry(0.08, 0.42, 0.2), MATERIALS.hair);
-        hairSideL.position.set(0.14, -0.1, 0.02);
-        hairGroup.add(hairSideL);
-        storeBindPose(hairSideL);
+            const hairSideL = new Mesh(new BoxGeometry(0.08, 0.42, 0.2), mats.hair);
+            hairSideL.position.set(0.14, -0.1, 0.02);
+            hairGroup.add(hairSideL);
+            storeBindPose(hairSideL);
 
-        const hairSideR = new Mesh(new BoxGeometry(0.08, 0.42, 0.2), MATERIALS.hair);
-        hairSideR.position.set(-0.14, -0.1, 0.02);
-        hairGroup.add(hairSideR);
-        storeBindPose(hairSideR);
+            const hairSideR = new Mesh(new BoxGeometry(0.08, 0.42, 0.2), mats.hair);
+            hairSideR.position.set(-0.14, -0.1, 0.02);
+            hairGroup.add(hairSideR);
+            storeBindPose(hairSideR);
 
-        const bangs = new Mesh(new BoxGeometry(0.26, 0.12, 0.05), MATERIALS.hair);
-        bangs.position.set(0, 0.08, -0.13);
-        hairGroup.add(bangs);
-        storeBindPose(bangs);
+            const bangs = new Mesh(new BoxGeometry(0.26, 0.12, 0.05), mats.hair);
+            bangs.position.set(0, 0.08, -0.13);
+            hairGroup.add(bangs);
+            storeBindPose(bangs);
+        }
 
         const legWidth = 0.15;
         const legGeo = new BoxGeometry(legWidth, 0.85, 0.17);
-        const leftLeg = new Mesh(legGeo, MATERIALS.pants);
+        const leftLeg = new Mesh(legGeo, mats.pants);
         leftLeg.position.set(hipWidth * 0.3, -0.45, 0);
         hips.add(leftLeg);
         this.limbs.leftLeg = leftLeg;
         storeBindPose(leftLeg);
 
-        const holsterL = new Mesh(new BoxGeometry(0.07, 0.24, 0.2), MATERIALS.holster);
-        holsterL.position.set(0.06, 0.1, 0.01);
-        leftLeg.add(holsterL);
-        storeBindPose(holsterL);
-
-        const strapL = new Mesh(new BoxGeometry(0.15, 0.05, 0.16), MATERIALS.holster);
-        strapL.position.set(0, 0.1, 0.01);
-        leftLeg.add(strapL);
-        storeBindPose(strapL);
-
-        const rightLeg = new Mesh(legGeo, MATERIALS.pants);
+        const rightLeg = new Mesh(legGeo, mats.pants);
         rightLeg.position.set(-hipWidth * 0.3, -0.45, 0);
         hips.add(rightLeg);
         this.limbs.rightLeg = rightLeg;
         storeBindPose(rightLeg);
 
-        const holsterR = new Mesh(new BoxGeometry(0.07, 0.24, 0.2), MATERIALS.holster);
-        holsterR.position.set(-0.06, 0.1, 0.01);
-        rightLeg.add(holsterR);
-        storeBindPose(holsterR);
-
-        const strapR = new Mesh(new BoxGeometry(0.15, 0.05, 0.16), MATERIALS.holster);
-        strapR.position.set(0, 0.1, 0.01);
-        rightLeg.add(strapR);
-        storeBindPose(strapR);
+        // Holsters only on some outfits
+        if (outfit !== 'CORPO') {
+            const holsterL = new Mesh(new BoxGeometry(0.07, 0.24, 0.2), mats.holster);
+            holsterL.position.set(0.06, 0.1, 0.01);
+            leftLeg.add(holsterL);
+            storeBindPose(holsterL);
+            
+            const holsterR = new Mesh(new BoxGeometry(0.07, 0.24, 0.2), mats.holster);
+            holsterR.position.set(-0.06, 0.1, 0.01);
+            rightLeg.add(holsterR);
+            storeBindPose(holsterR);
+        }
 
         const bootGeo = new BoxGeometry(0.18, 0.25, 0.25);
-        const leftBoot = new Mesh(bootGeo, MATERIALS.boots);
+        const leftBoot = new Mesh(bootGeo, mats.boots);
         leftBoot.position.set(0, -0.35, -0.04);
         leftLeg.add(leftBoot);
         storeBindPose(leftBoot);
 
-        const rightBoot = new Mesh(bootGeo, MATERIALS.boots);
+        const rightBoot = new Mesh(bootGeo, mats.boots);
         rightBoot.position.set(0, -0.35, -0.04);
         rightLeg.add(rightBoot);
         storeBindPose(rightBoot);
 
+        // Armor Pads
+        if (outfit === 'ARMOR') {
+            const padL = new Mesh(new BoxGeometry(0.22, 0.22, 0.22), mats.jacket);
+            padL.position.set(shoulderWidth * 0.5 + 0.1, 0.2, 0);
+            chestGroup.add(padL);
+            storeBindPose(padL);
+
+            const padR = new Mesh(new BoxGeometry(0.22, 0.22, 0.22), mats.jacket);
+            padR.position.set(-shoulderWidth * 0.5 - 0.1, 0.2, 0);
+            chestGroup.add(padR);
+            storeBindPose(padR);
+        }
+
         const armGeo = new BoxGeometry(0.11, 0.7, 0.11);
-        const leftArm = new Mesh(armGeo, MATERIALS.jacket);
+        const leftArm = new Mesh(armGeo, mats.jacket);
         leftArm.position.set(shoulderWidth * 0.5 + 0.06, -0.05, 0);
         chestGroup.add(leftArm);
         this.limbs.leftArm = leftArm;
         storeBindPose(leftArm);
 
-        const leftGlove = new Mesh(new BoxGeometry(0.12, 0.15, 0.12), MATERIALS.holster);
+        const leftGlove = new Mesh(new BoxGeometry(0.12, 0.15, 0.12), mats.holster);
         leftGlove.position.y = -0.3;
         leftArm.add(leftGlove);
         this.limbs.leftHand = leftGlove;
         storeBindPose(leftGlove);
 
-        const rightArm = new Mesh(armGeo, MATERIALS.jacket);
+        const rightArm = new Mesh(armGeo, mats.jacket);
         rightArm.position.set(-shoulderWidth * 0.5 - 0.06, -0.05, 0);
         chestGroup.add(rightArm);
         this.limbs.rightArm = rightArm;
         storeBindPose(rightArm);
 
-        const rightGlove = new Mesh(new BoxGeometry(0.12, 0.15, 0.12), MATERIALS.holster);
+        const rightGlove = new Mesh(new BoxGeometry(0.12, 0.15, 0.12), mats.holster);
         rightGlove.position.y = -0.3;
         rightArm.add(rightGlove);
         this.limbs.rightHand = rightGlove;
         storeBindPose(rightGlove);
 
-        const belt = new Mesh(new BoxGeometry(0.46, 0.06, 0.18), MATERIALS.holster);
+        const belt = new Mesh(new BoxGeometry(0.46, 0.06, 0.18), mats.holster);
         belt.position.set(0, 0.02, 0.06);
         hips.add(belt);
         storeBindPose(belt);
 
-        const band = new Mesh(new BoxGeometry(0.5, 0.06, 0.14), MATERIALS.jacket);
+        const band = new Mesh(new BoxGeometry(0.5, 0.06, 0.14), mats.jacket);
         band.position.set(0, -0.02, 0.13);
         chestGroup.add(band);
         storeBindPose(band);
 
-        const backSigil = new Mesh(new CircleGeometry(0.15, 64), MATERIALS.jacketEmblem);
-        backSigil.position.set(0, 0.0, jacketBack.geometry.parameters.depth * 0.5 + 0.001);
-        jacketBack.add(backSigil);
-        storeBindPose(backSigil);
-
-        const shadow = new Mesh(new CircleGeometry(0.55, 12), MATERIALS.accent.clone());
+        const shadow = new Mesh(new CircleGeometry(0.55, 12), mats.accent.clone());
         shadow.material.transparent = true;
         shadow.material.opacity = 0.35;
         shadow.rotation.x = -Math.PI / 2;
@@ -449,6 +504,7 @@ export class ModelRig {
         storeBindPose(shadow);
     }
 
+    // ... existing animation methods ...
     get animationList() {
         return Object.keys(ANIMATIONS);
     }
@@ -477,6 +533,13 @@ export class ModelRig {
     updateAnimation(delta = 0.016, speed = 0) {
         this.animationTime += delta;
         this.resetPose();
+        // Auto-switch to run/walk if moving
+        if (speed > 0.1) {
+            this.animationState = speed > 5 ? 'run' : 'walk';
+        } else if (this.animationState === 'walk' || this.animationState === 'run') {
+            this.animationState = 'idle';
+        }
+
         const anim = ANIMATIONS[this.animationState] || ANIMATIONS.idle;
         const context = {
             rig: this,
@@ -487,6 +550,41 @@ export class ModelRig {
             speedWeight: clamp(speed / 12, 0, 1)
         };
         anim(context);
+    }
+}
+
+export class ModelViewer {
+    constructor(container, options = {}) {
+        this.container = container;
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 100);
+        this.camera.position.set(0, 1.5, 3.5);
+        this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        this.renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(this.renderer.domElement);
+
+        this.light = new THREE.DirectionalLight(0xffffff, 1);
+        this.light.position.set(2, 2, 2);
+        this.scene.add(this.light);
+        this.scene.add(new THREE.AmbientLight(0x404040));
+
+        this.rig = new ModelRig(options);
+        this.scene.add(this.rig.group);
+        
+        this.animate();
+    }
+
+    updateOptions(options) {
+        this.scene.remove(this.rig.group);
+        this.rig = new ModelRig(options);
+        this.scene.add(this.rig.group);
+    }
+
+    animate() {
+        requestAnimationFrame(() => this.animate());
+        this.rig.updateAnimation(0.016, 0);
+        this.rig.group.rotation.y += 0.01;
+        this.renderer.render(this.scene, this.camera);
     }
 }
 
