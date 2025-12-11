@@ -168,6 +168,74 @@ export default class Vehicle {
         }
     }
 
+    applyDriverInput(input = {}, dt = 1 / 60) {
+        if (!this.chassis) return;
+
+        // Vehicle-specific tuning
+        const engineForce = this.type === 'TANK' ? 11000 : 7500;
+        const maxSpeed = this.type === 'TANK' ? 18 : 26;
+        const steerTorque = this.type === 'TANK' ? 2200 : 1600;
+        const lateralStiffness = this.type === 'TANK' ? 0.35 : 0.5;
+
+        const forwardInput = input.y || 0;
+        const steerInput = input.x || 0;
+
+        const rot = this.chassis.rotation();
+        const rotateVector = (v) => {
+            const qx = rot.x, qy = rot.y, qz = rot.z, qw = rot.w;
+            const ix =  qw * v.x + qy * v.z - qz * v.y;
+            const iy =  qw * v.y + qz * v.x - qx * v.z;
+            const iz =  qw * v.z + qx * v.y - qy * v.x;
+            const iw = -qx * v.x - qy * v.y - qz * v.z;
+
+            return {
+                x: ix * qw + iw * -qx + iy * -qz - iz * -qy,
+                y: iy * qw + iw * -qy + iz * -qx - ix * -qz,
+                z: iz * qw + iw * -qz + ix * -qy - iy * -qx
+            };
+        };
+
+        const forward = rotateVector({ x: 0, y: 0, z: -1 });
+        const right = rotateVector({ x: 1, y: 0, z: 0 });
+
+        const velocity = this.chassis.linvel();
+        const forwardSpeed = velocity.x * forward.x + velocity.y * forward.y + velocity.z * forward.z;
+        const rightSpeed = velocity.x * right.x + velocity.y * right.y + velocity.z * right.z;
+
+        const mass = this.chassis.mass();
+        const targetSpeed = maxSpeed * forwardInput;
+        const speedError = targetSpeed - forwardSpeed;
+        const accelImpulse = Math.max(-engineForce, Math.min(engineForce, speedError * mass)) * dt;
+
+        // Apply acceleration/braking along the chassis forward vector
+        const throttleImpulse = {
+            x: forward.x * accelImpulse,
+            y: forward.y * accelImpulse,
+            z: forward.z * accelImpulse
+        };
+        this.chassis.applyImpulse(throttleImpulse, true);
+
+        // Stabilize sideways slip to keep the vehicle planted
+        const lateralImpulseMag = -rightSpeed * mass * lateralStiffness;
+        const lateralImpulse = {
+            x: right.x * lateralImpulseMag * dt,
+            y: right.y * lateralImpulseMag * dt,
+            z: right.z * lateralImpulseMag * dt
+        };
+        this.chassis.applyImpulse(lateralImpulse, true);
+
+        // Steering via torque instead of hard rotation snapping
+        const angularVel = this.chassis.angvel();
+        const targetYawRate = steerInput * steerTorque;
+        const yawRateError = targetYawRate - angularVel.y;
+        const steerImpulse = { x: 0, y: yawRateError * dt, z: 0 };
+        this.chassis.applyTorqueImpulse(steerImpulse, true);
+
+        // Mild damping keeps the vehicle controllable and prevents runaway speeds
+        this.chassis.setLinearDamping(0.12);
+        this.chassis.setAngularDamping(0.4);
+    }
+
     toJSON() {
         const t = this.chassis.translation();
         const r = this.chassis.rotation();

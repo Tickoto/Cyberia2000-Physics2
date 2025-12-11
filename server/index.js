@@ -339,7 +339,8 @@ function serializeState() {
             skinColor: p.data.skinColor,
             outfit: p.data.outfit,
             hairStyle: p.data.hairStyle,
-            username: p.data.username
+            username: p.data.username,
+            mountedVehicle: p.mountedVehicle
         };
     });
     

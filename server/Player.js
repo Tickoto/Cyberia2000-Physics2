@@ -17,7 +17,8 @@ export default class Player {
             position: position,
             faction: 'NEUTRAL',
             health: 100,
-            inventory: Array(20).fill(null) // 20 Slots
+            inventory: Array(20).fill(null), // 20 Slots
+            mountedVehicle: null
         };
 
         // Physics Initialization
@@ -51,7 +52,7 @@ export default class Player {
         if (!input) return;
 
         if (this.mountedVehicle) {
-            this.updateMountedState(input);
+            this.updateMountedState(input, dt);
             return;
         }
 
@@ -108,6 +109,10 @@ export default class Player {
         this.mountedVehicle = { vehicleId, seat: seatIndex };
         // Reset fall state
         this.verticalVelocity = 0;
+        if (this.collider) {
+            this.collider.setSensor(true); // Disable collisions while mounted
+        }
+        this.data.mountedVehicle = { vehicleId, seat: seatIndex };
         this.updateMountedState({});
     }
 
@@ -128,9 +133,13 @@ export default class Player {
         this.rigidBody.setNextKinematicTranslation(exitPos);
         this.data.position = exitPos;
         this.mountedVehicle = null;
+        this.data.mountedVehicle = null;
+        if (this.collider) {
+            this.collider.setSensor(false);
+        }
     }
 
-    updateMountedState(input) {
+    updateMountedState(input, dt = 1 / 60) {
         const { vehicleId, seat } = this.mountedVehicle || {};
         const vehicle = this.vehicles?.get(vehicleId);
 
@@ -142,6 +151,10 @@ export default class Player {
         if (input?.interact) {
             this.dismountVehicle();
             return;
+        }
+
+        if (seat === 0 && vehicle) {
+            vehicle.applyDriverInput(input || {}, dt);
         }
 
         const seatPos = vehicle.getSeatWorldPosition(seat);
