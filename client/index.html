@@ -81,46 +81,6 @@
             padding: 5px;
         }
 
-        /* Helicopter HUD */
-        #helicopter-hud {
-            position: absolute;
-            right: 220px;
-            bottom: 140px;
-            width: 240px;
-            padding: 12px;
-            background: var(--bg-glass);
-            border: var(--border-tech);
-            box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
-            display: none;
-        }
-
-        #helicopter-hud .hud-title {
-            font-size: 18px;
-            margin-bottom: 8px;
-            letter-spacing: 2px;
-        }
-
-        #rpm-bar-container {
-            width: 100%;
-            height: 12px;
-            background: #111;
-            border: 1px solid #0f0;
-            margin-bottom: 6px;
-        }
-
-        #rpm-bar-fill {
-            height: 100%;
-            width: 0%;
-            background: #b02020;
-            transition: width 0.1s linear, background 0.1s linear;
-        }
-
-        #rpm-label {
-            text-align: right;
-            font-size: 14px;
-            color: #fff;
-        }
-
         /* Hotbar (Bottom Center) */
         #hotbar {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -381,12 +341,6 @@
             <canvas id="minimap-canvas" width="180" height="180"></canvas>
         </div>
         <div id="biome-display">SCANNING...</div>
-
-        <div id="helicopter-hud">
-            <div class="hud-title">HELICOPTER SYSTEMS</div>
-            <div id="rpm-bar-container"><div id="rpm-bar-fill"></div></div>
-            <div id="rpm-label">RPM 0%</div>
-        </div>
 
         <!-- Hotbar -->
         <div id="hotbar">
