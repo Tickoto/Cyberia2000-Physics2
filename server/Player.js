@@ -2,12 +2,15 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import NetworkManager from '../shared/NetworkManager.js';
 
 export default class Player {
-    constructor(socket, world, position = { x: 0, y: 10, z: 0 }, physicsSystems, physicsHandleMap) {
+    constructor(socket, world, position = { x: 0, y: 10, z: 0 }, physicsSystems, physicsHandleMap, vehicles) {
         this.socket = socket;
         this.id = socket.id;
         this.world = world;
         this.physicsSystems = physicsSystems;
         this.physicsHandleMap = physicsHandleMap;
+        this.vehicles = vehicles;
+
+        this.mountedVehicle = null; // { vehicleId, seat }
         
         // Persistence Data
         this.data = {
@@ -47,9 +50,14 @@ export default class Player {
         // Input: { x, y, viewDir: {x, y, z}, jump: bool, interact: bool }
         if (!input) return;
 
+        if (this.mountedVehicle) {
+            this.updateMountedState(input);
+            return;
+        }
+
         // Physics Constants
         const speed = 10;
-        const gravity = -40.0; 
+        const gravity = -40.0;
         const jumpStrength = 25.0;
         
         // Ground Check
@@ -93,6 +101,53 @@ export default class Player {
         if (input.interact) {
             // Pass the player's collider so the raycast ignores the player capsule
             this.handleInteraction(input.viewDir, this.collider);
+        }
+    }
+
+    mountVehicle(vehicleId, seatIndex) {
+        this.mountedVehicle = { vehicleId, seat: seatIndex };
+        // Reset fall state
+        this.verticalVelocity = 0;
+        this.updateMountedState({});
+    }
+
+    dismountVehicle() {
+        if (!this.mountedVehicle) return;
+        const { vehicleId, seat } = this.mountedVehicle;
+        const vehicle = this.vehicles?.get(vehicleId);
+
+        if (vehicle && vehicle.seats[seat] === this.id) {
+            vehicle.seats[seat] = null;
+        }
+
+        const seatPos = vehicle?.getSeatWorldPosition(seat);
+        const exitPos = seatPos
+            ? { x: seatPos.x + 1.0, y: seatPos.y, z: seatPos.z }
+            : this.rigidBody.translation();
+
+        this.rigidBody.setNextKinematicTranslation(exitPos);
+        this.data.position = exitPos;
+        this.mountedVehicle = null;
+    }
+
+    updateMountedState(input) {
+        const { vehicleId, seat } = this.mountedVehicle || {};
+        const vehicle = this.vehicles?.get(vehicleId);
+
+        if (!vehicle) {
+            this.mountedVehicle = null;
+            return;
+        }
+
+        if (input?.interact) {
+            this.dismountVehicle();
+            return;
+        }
+
+        const seatPos = vehicle.getSeatWorldPosition(seat);
+        if (seatPos) {
+            this.rigidBody.setNextKinematicTranslation(seatPos);
+            this.data.position = seatPos;
         }
     }
 
