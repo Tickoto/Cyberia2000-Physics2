@@ -42,6 +42,7 @@ const chunkCache = new Map(); // "x,z" -> ChunkData
 const players = new Map(); // socketId -> Player Data
 const vehicles = new Map(); // id -> Vehicle
 const physicsHandleMap = new Map(); // handle -> { type, instance }
+const vehicleSeatAssignments = new Map(); // socketId -> { vehicleId, seatIndex }
 const chatSystem = new ChatSystem();
 let lastState = {};
 
@@ -195,7 +196,33 @@ io.on('connection', (socket) => {
             const p = players.get(socket.id);
             // Process inputs using Player class logic
             // data.input should contain { moveDir, viewDir, jump, interact }
-            p.update(TICK_DT / 1000, data.input); 
+            p.update(TICK_DT / 1000, data.input);
+        }
+    });
+
+    socket.on(NetworkManager.Packet.ENTER_VEHICLE, (data) => {
+        const { vehicleId, seat } = data || {};
+        if (!vehicleId || typeof seat !== 'number') return;
+        if (!vehicles.has(vehicleId)) return;
+
+        const vehicle = vehicles.get(vehicleId);
+        if (seat < 0 || seat >= vehicle.seats.length) return;
+
+        // Free the player's previous seat if needed
+        const previousSeat = vehicleSeatAssignments.get(socket.id);
+        if (previousSeat) {
+            const prevVehicle = vehicles.get(previousSeat.vehicleId);
+            if (prevVehicle && prevVehicle.seats[previousSeat.seatIndex] === socket.id) {
+                prevVehicle.seats[previousSeat.seatIndex] = null;
+            }
+            vehicleSeatAssignments.delete(socket.id);
+        }
+
+        // Reserve the requested seat if it's free
+        if (vehicle.seats[seat] === null) {
+            vehicle.seats[seat] = socket.id;
+            vehicleSeatAssignments.set(socket.id, { vehicleId, seatIndex: seat });
+            console.log(`Player ${socket.id} entered ${vehicleId} seat ${seat}`);
         }
     });
 
@@ -260,6 +287,16 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log('Player disconnected:', socket.id);
+
+        const seatInfo = vehicleSeatAssignments.get(socket.id);
+        if (seatInfo) {
+            const v = vehicles.get(seatInfo.vehicleId);
+            if (v && v.seats[seatInfo.seatIndex] === socket.id) {
+                v.seats[seatInfo.seatIndex] = null;
+            }
+            vehicleSeatAssignments.delete(socket.id);
+        }
+
         if (players.has(socket.id)) {
             const p = players.get(socket.id);
             physicsWorld.removeRigidBody(p.rigidBody);
