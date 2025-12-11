@@ -22,11 +22,7 @@ class GameClient {
             moveDir: { x: 0, y: 0 },
             viewDir: { x: 0, y: 0, z: -1 },
             jump: false,
-            interact: false,
-            rotorUp: false,
-            rotorDown: false,
-            yawLeft: false,
-            yawRight: false
+            interact: false
         };
 
         this.interactRange = 2.0;
@@ -564,12 +560,8 @@ class GameClient {
                 case 'KeyS': this.input.moveDir.y = down ? 1 : 0; break;
                 case 'KeyA': this.input.moveDir.x = down ? -1 : 0; break;
                 case 'KeyD': this.input.moveDir.x = down ? 1 : 0; break;
-                case 'Space': this.input.jump = down; this.input.rotorUp = down; break;
+                case 'Space': this.input.jump = down; break;
                 case 'KeyE': if (down) this.input.interact = true; break;
-                case 'ShiftLeft': this.input.rotorDown = down; break;
-                case 'ShiftRight': this.input.rotorDown = down; break;
-                case 'KeyZ': this.input.yawLeft = down; break;
-                case 'KeyC': this.input.yawRight = down; break;
             }
         };
 
@@ -633,116 +625,50 @@ class GameClient {
     
     renderVehicle(type) {
         const group = new THREE.Group();
-
+        
         if (type === 'JEEP') {
-            const paint = new THREE.MeshStandardMaterial({ color: 0x284f2a, metalness: 0.25, roughness: 0.55 });
-            const trim = new THREE.MeshStandardMaterial({ color: 0x0d0d0d, metalness: 0.6, roughness: 0.35 });
-
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 3.2), paint);
-            body.castShadow = true;
-            body.receiveShadow = true;
-            body.position.y = 0;
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 3), new THREE.MeshStandardMaterial({ color: 0x335533 }));
+            body.position.y = 0; // Centered
             group.add(body);
-
-            const hood = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 1.1), paint);
-            hood.position.set(0, 0.55, 0.95);
-            group.add(hood);
-
-            const rollbar = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.8), trim);
-            rollbar.rotation.z = Math.PI / 2;
-            rollbar.position.set(0, 0.9, -0.3);
-            group.add(rollbar);
-
-            const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.35, 20);
+            // Wheels
+            const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3);
             wheelGeo.rotateZ(Math.PI/2);
-            const wheelRim = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.7, roughness: 0.4 });
-            const tyre = trim;
-
-            const wheelPositions = [
-                [-0.95, -0.45, 1.05], [0.95, -0.45, 1.05],
-                [-0.95, -0.45, -1.05], [0.95, -0.45, -1.05]
+            const wMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+            
+            const positions = [
+                [-0.9, -0.4, 1], [0.9, -0.4, 1],
+                [-0.9, -0.4, -1], [0.9, -0.4, -1]
             ];
-            wheelPositions.forEach(p => {
-                const wheel = new THREE.Group();
-                const tyreMesh = new THREE.Mesh(wheelGeo, tyre);
-                tyreMesh.castShadow = true;
-                tyreMesh.receiveShadow = true;
-                const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.36, 12), wheelRim);
-                rim.rotation.copy(tyreMesh.rotation);
-                wheel.add(tyreMesh);
-                wheel.add(rim);
-                wheel.position.set(...p);
-                group.add(wheel);
+            positions.forEach(p => {
+                const w = new THREE.Mesh(wheelGeo, wMat);
+                w.position.set(...p);
+                group.add(w);
             });
-            const grill = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.2, 0.1), trim);
-            grill.position.set(0, 0.35, 1.6);
-            group.add(grill);
         } else if (type === 'TANK') {
-            const hullMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.3, roughness: 0.6 });
-            const accentMat = new THREE.MeshStandardMaterial({ color: 0x1c1c1c, metalness: 0.55, roughness: 0.45 });
-
-            const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.1, 4.7), hullMat);
+            const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.0, 4.5), new THREE.MeshStandardMaterial({ color: 0x222222 }));
             body.position.y = 0;
-            body.castShadow = true;
-            body.receiveShadow = true;
             group.add(body);
-
-            const track = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.6, 4.9), accentMat);
-            track.position.y = -0.35;
-            group.add(track);
-
-            const turret = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.9, 2.1), hullMat);
-            turret.position.y = 1.05;
+            const turret = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 2.0), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+            turret.position.y = 0.9;
             group.add(turret);
-            const hatch = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.15, 16), accentMat);
-            hatch.rotation.x = Math.PI / 2;
-            hatch.position.set(0.5, 1.35, 0.2);
-            group.add(hatch);
-
-            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 3.2, 16), accentMat);
+            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3), new THREE.MeshStandardMaterial({ color: 0x111111 }));
             barrel.rotation.x = Math.PI/2;
-            barrel.position.set(0, 1.05, 2.6);
+            barrel.position.set(0, 0.9, 2.5);
             group.add(barrel);
         } else if (type === 'HELICOPTER') {
-            const hullMat = new THREE.MeshStandardMaterial({ color: 0x2c4c7a, metalness: 0.4, roughness: 0.35 });
-            const rotorMat = new THREE.MeshStandardMaterial({ color: 0x0f1115, metalness: 0.65, roughness: 0.4 });
-
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 4.2), hullMat);
+            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 4.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
             body.position.y = 0;
-            body.castShadow = true;
-            body.receiveShadow = true;
             group.add(body);
-
-            const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.9, 18, 12, 0, Math.PI), new THREE.MeshStandardMaterial({ color: 0x6fb0ff, transparent: true, opacity: 0.55, roughness: 0.1, metalness: 0.1 }));
-            canopy.scale.set(1.2, 0.8, 1.1);
-            canopy.position.set(0, 0.45, 1.1);
-            group.add(canopy);
-
-            const tail = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 3.3), hullMat);
-            tail.position.set(0, 0.2, -3.7);
+            const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 3.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
+            tail.position.set(0, 0.2, -3.5);
             group.add(tail);
-
-            const tailRotor = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.05), rotorMat);
-            tailRotor.position.set(0.35, 0.2, -5.1);
-            tailRotor.name = 'tailRotor';
-            group.add(tailRotor);
-
-            const skidMat = new THREE.MeshStandardMaterial({ color: 0x1b1b1b, metalness: 0.5, roughness: 0.45 });
-            const skidGeo = new THREE.CylinderGeometry(0.05, 0.05, 2.4, 10);
-            skidGeo.rotateZ(Math.PI / 2);
-            const leftSkid = new THREE.Mesh(skidGeo, skidMat);
-            leftSkid.position.set(-0.7, -0.8, 0.2);
-            const rightSkid = new THREE.Mesh(skidGeo, skidMat);
-            rightSkid.position.set(0.7, -0.8, 0.2);
-            group.add(leftSkid);
-            group.add(rightSkid);
-
-            const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 7.6), rotorMat);
-            rotor.position.y = 1.2;
+            // Rotor
+            const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 7.0), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            rotor.position.y = 1.0;
             rotor.name = 'rotor'; // Tag for animation
             group.add(rotor);
         }
-
+        
         return group;
     }
 
@@ -778,13 +704,10 @@ class GameClient {
             
             mesh.position.set(data.x, data.y, data.z);
             mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
-
+            
             if (data.type === 'HELICOPTER') {
                 const rotor = mesh.getObjectByName('rotor');
-                const tailRotor = mesh.getObjectByName('tailRotor');
-                const spinRate = (data.rotorRPM !== undefined ? data.rotorRPM : 600) * 0.0005;
-                if (rotor) rotor.rotation.y += spinRate;
-                if (tailRotor) tailRotor.rotation.x += spinRate * 3.5;
+                if (rotor) rotor.rotation.y += 0.5; // Spin
             }
         }
     }
@@ -873,37 +796,13 @@ class GameClient {
         finalMove.addScaledVector(camDir, -this.input.moveDir.y);
         finalMove.addScaledVector(camRight, this.input.moveDir.x);
 
-        const me = this.entities.get(this.net.myId);
-        const drivingVehicleId = me?.mountedVehicle?.vehicleId;
-        const drivingSeat = me?.mountedVehicle?.seat;
-        const drivingVehicle = drivingVehicleId ? this.vehicles.get(drivingVehicleId) : null;
-        const isDriver = drivingVehicle && drivingSeat === 0;
-
-        const vehicleYaw = (this.input.yawRight ? 1 : 0) - (this.input.yawLeft ? 1 : 0);
-        const collectiveInput = (this.input.rotorUp ? 1 : 0) - (this.input.rotorDown ? 1 : 0);
-
-        const payload = {
+        this.net.sendInput({
+            x: finalMove.x,
+            y: finalMove.z,
             viewDir: { x: viewDir.x, y: viewDir.y, z: viewDir.z },
+            jump: this.input.jump,
             interact: this.input.interact
-        };
-
-        if (isDriver && drivingVehicle) {
-            if (drivingVehicle.type === 'HELICOPTER') {
-                payload.pitch = -this.input.moveDir.y;
-                payload.roll = this.input.moveDir.x;
-                payload.yaw = vehicleYaw;
-                payload.collective = collectiveInput;
-            } else {
-                payload.throttle = -this.input.moveDir.y;
-                payload.steer = this.input.moveDir.x;
-            }
-        } else {
-            payload.x = finalMove.x;
-            payload.y = finalMove.z;
-            payload.jump = this.input.jump;
-        }
-
-        this.net.sendInput(payload);
+        });
         this.input.interact = false;
         
         // Chunk Update
