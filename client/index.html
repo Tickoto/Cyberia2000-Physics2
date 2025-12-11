@@ -81,23 +81,6 @@
             padding: 5px;
         }
 
-        #helicopter-hud {
-            position: absolute;
-            bottom: 200px;
-            right: 20px;
-            width: 220px;
-            background: var(--bg-glass);
-            border: var(--border-tech);
-            padding: 10px;
-            display: none;
-            box-shadow: 0 0 15px rgba(0, 255, 0, 0.2);
-        }
-
-        #helicopter-hud .hud-title { font-size: 18px; letter-spacing: 2px; margin-bottom: 6px; }
-        #helicopter-hud .hud-subtitle { font-size: 14px; color: #9adfff; margin-bottom: 4px; }
-        #rpm-bar { height: 14px; background: #111; border: 1px solid #0f0; width: 100%; }
-        #rpm-bar-fill { height: 100%; width: 0%; background: #ff3333; transition: width 0.1s, background 0.2s; }
-
         /* Hotbar (Bottom Center) */
         #hotbar {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -358,11 +341,6 @@
             <canvas id="minimap-canvas" width="180" height="180"></canvas>
         </div>
         <div id="biome-display">SCANNING...</div>
-        <div id="helicopter-hud">
-            <div class="hud-title">HELI SYSTEMS</div>
-            <div class="hud-subtitle">ROTOR RPM</div>
-            <div id="rpm-bar"><div id="rpm-bar-fill"></div></div>
-        </div>
 
         <!-- Hotbar -->
         <div id="hotbar">
