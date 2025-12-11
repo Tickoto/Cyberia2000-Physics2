@@ -719,6 +719,12 @@ class GameClient {
         const camDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraRotation.y);
         const camRight = new THREE.Vector3(-camDir.z, 0, camDir.x);
 
+        // Use full camera orientation (including pitch) for interaction raycasts
+        const viewDir = new THREE.Vector3(0, 0, -1)
+            .applyAxisAngle(new THREE.Vector3(1, 0, 0), this.cameraRotation.x)
+            .applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraRotation.y)
+            .normalize();
+
         const finalMove = new THREE.Vector3();
         finalMove.addScaledVector(camDir, -this.input.moveDir.y);
         finalMove.addScaledVector(camRight, this.input.moveDir.x);
@@ -726,7 +732,7 @@ class GameClient {
         this.net.sendInput({
             x: finalMove.x,
             y: finalMove.z,
-            viewDir: { x: camDir.x, y: camDir.y, z: camDir.z },
+            viewDir: { x: viewDir.x, y: viewDir.y, z: viewDir.z },
             jump: this.input.jump,
             interact: this.input.interact
         });
