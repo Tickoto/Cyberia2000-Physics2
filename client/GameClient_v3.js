@@ -22,8 +22,11 @@ class GameClient {
             moveDir: { x: 0, y: 0 },
             viewDir: { x: 0, y: 0, z: -1 },
             jump: false,
-            interact: false
+            sprint: false,
+            interact: false,
+            flight: { pitch: 0, roll: 0, yaw: 0, engineUp: false, engineDown: false }
         };
+        this.keyState = {};
 
         this.interactRange = 2.0;
         this.interactRaycaster = new THREE.Raycaster();
@@ -553,16 +556,26 @@ class GameClient {
     }
 
     setupInput() {
+        const recomputeAxes = () => {
+            const forward = (this.keyState['KeyS'] ? 1 : 0) + (this.keyState['KeyW'] ? -1 : 0);
+            const strafe = (this.keyState['KeyD'] ? 1 : 0) + (this.keyState['KeyA'] ? -1 : 0);
+            this.input.moveDir.y = forward;
+            this.input.moveDir.x = strafe;
+            this.input.jump = !!this.keyState['Space'];
+            this.input.sprint = !!this.keyState['ShiftLeft'] || !!this.keyState['ShiftRight'];
+
+            this.input.flight.pitch = forward;
+            this.input.flight.roll = strafe;
+            this.input.flight.yaw = (this.keyState['KeyC'] ? 1 : 0) + (this.keyState['KeyZ'] ? -1 : 0);
+            this.input.flight.engineUp = this.input.jump;
+            this.input.flight.engineDown = this.input.sprint;
+        };
+
         const onKey = (e, down) => {
             if (document.activeElement === document.getElementById('chat-input')) return;
-            switch(e.code) {
-                case 'KeyW': this.input.moveDir.y = down ? -1 : 0; break;
-                case 'KeyS': this.input.moveDir.y = down ? 1 : 0; break;
-                case 'KeyA': this.input.moveDir.x = down ? -1 : 0; break;
-                case 'KeyD': this.input.moveDir.x = down ? 1 : 0; break;
-                case 'Space': this.input.jump = down; break;
-                case 'KeyE': if (down) this.input.interact = true; break;
-            }
+            this.keyState[e.code] = down;
+            if (e.code === 'KeyE' && down) this.input.interact = true;
+            recomputeAxes();
         };
 
         document.addEventListener('keydown', (e) => onKey(e, true));
@@ -625,36 +638,75 @@ class GameClient {
     
     renderVehicle(type) {
         const group = new THREE.Group();
-        
+
         if (type === 'JEEP') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 3), new THREE.MeshStandardMaterial({ color: 0x335533 }));
-            body.position.y = 0; // Centered
-            group.add(body);
-            // Wheels
-            const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3);
-            wheelGeo.rotateZ(Math.PI/2);
-            const wMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-            
-            const positions = [
-                [-0.9, -0.4, 1], [0.9, -0.4, 1],
-                [-0.9, -0.4, -1], [0.9, -0.4, -1]
+            const main = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 2.6), new THREE.MeshStandardMaterial({ color: 0x335533, metalness: 0.1, roughness: 0.6 }));
+            main.position.y = 0.1;
+            group.add(main);
+
+            const hood = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 1.0), new THREE.MeshStandardMaterial({ color: 0x2d4d2d }));
+            hood.position.set(0, 0.55, 0.6);
+            group.add(hood);
+
+            const cage = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            cage.rotation.z = Math.PI / 2;
+            cage.position.set(0, 0.9, 0);
+            group.add(cage);
+
+            const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.35, 18, 1, false);
+            wheelGeo.rotateZ(Math.PI / 2);
+            const wMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+            const wheelPositions = [
+                [-0.95, -0.4, 1.1], [0.95, -0.4, 1.1],
+                [-0.95, -0.4, -1.1], [0.95, -0.4, -1.1]
             ];
-            positions.forEach(p => {
+            const wheels = wheelPositions.map(p => {
                 const w = new THREE.Mesh(wheelGeo, wMat);
                 w.position.set(...p);
                 group.add(w);
+                return w;
             });
+            group.userData.wheels = wheels;
         } else if (type === 'TANK') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.0, 4.5), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-            body.position.y = 0;
-            group.add(body);
-            const turret = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 2.0), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-            turret.position.y = 0.9;
+            const hull = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.0, 4.8), new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.2 }));
+            hull.position.y = 0;
+            group.add(hull);
+
+            const turret = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 2.2), new THREE.MeshStandardMaterial({ color:0x333333 }));
+            turret.position.y = 0.95;
             group.add(turret);
             const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3), new THREE.MeshStandardMaterial({ color: 0x111111 }));
             barrel.rotation.x = Math.PI/2;
-            barrel.position.set(0, 0.9, 2.5);
+            barrel.position.set(0, 0.95, 2.7);
             group.add(barrel);
+
+            const buildTrackMaterial = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 32; canvas.height = 64;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#1a1a1a';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#333';
+                for (let i = 0; i < 6; i++) {
+                    ctx.fillRect(2, i * 10 + 2, canvas.width - 4, 6);
+                }
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+                tex.repeat.set(1, 4);
+                return new THREE.MeshStandardMaterial({ color: 0x202020, map: tex });
+            };
+
+            const trackMatL = buildTrackMaterial();
+            const trackMatR = buildTrackMaterial();
+            const trackGeo = new THREE.BoxGeometry(0.45, 0.6, 4.9);
+
+            const leftTrack = new THREE.Mesh(trackGeo, trackMatL);
+            leftTrack.position.set(-1.3, -0.2, 0);
+            group.add(leftTrack);
+            const rightTrack = new THREE.Mesh(trackGeo, trackMatR);
+            rightTrack.position.set(1.3, -0.2, 0);
+            group.add(rightTrack);
+            group.userData.trackMaterials = [trackMatL, trackMatR];
         } else if (type === 'HELICOPTER') {
             const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 4.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
             body.position.y = 0;
@@ -662,54 +714,112 @@ class GameClient {
             const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 3.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
             tail.position.set(0, 0.2, -3.5);
             group.add(tail);
+            const skids = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.2), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            skids.rotation.z = Math.PI / 2;
+            skids.position.set(0, -0.8, 0.6);
+            group.add(skids);
             // Rotor
             const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 7.0), new THREE.MeshStandardMaterial({ color: 0x111111 }));
             rotor.position.y = 1.0;
             rotor.name = 'rotor'; // Tag for animation
             group.add(rotor);
         }
-        
+
         return group;
     }
-
     updateVehicles(vehicleState) {
         if (!vehicleState) return;
-        
-        // Remove missing
-        const currentIds = new Set(Object.keys(vehicleState));
+
+        const vehicles = Array.isArray(vehicleState)
+            ? vehicleState.filter(v => ['JEEP', 'TANK', 'HELICOPTER'].includes(v.type))
+            : Object.values(vehicleState);
+
+        const incomingIds = new Set(vehicles.map(v => v.id));
+
         for (const [id, entity] of this.vehicles) {
-            if (!currentIds.has(id)) {
+            if (!incomingIds.has(id)) {
                 this.scene.remove(entity.mesh);
                 this.vehicles.delete(id);
             }
         }
 
-        // Add/Update
-        for (const id in vehicleState) {
-            const data = vehicleState[id];
-            
+        vehicles.forEach((data) => {
+            const id = data.id;
             if (!this.vehicles.has(id)) {
                 const mesh = this.renderVehicle(data.type);
                 mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
                 this.scene.add(mesh);
-                this.vehicles.set(id, { mesh, type: data.type });
+                this.vehicles.set(id, { mesh, type: data.type, lastState: data });
             }
 
             const entity = this.vehicles.get(id);
             const mesh = entity.mesh;
+            entity.lastState = data;
 
             if (!mesh.userData || !mesh.userData.vehicleId) {
                 mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
             }
-            
+
             mesh.position.set(data.x, data.y, data.z);
             mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
-            
+
+            if (data.wheels && mesh.userData.wheels) {
+                data.wheels.forEach((w, idx) => {
+                    const wheelMesh = mesh.userData.wheels[idx];
+                    if (wheelMesh && w) {
+                        const world = new THREE.Vector3(w.x, w.y, w.z);
+                        mesh.worldToLocal(world);
+                        wheelMesh.position.copy(world);
+                    }
+                });
+            }
+
+            if (data.type === 'TANK' && mesh.userData.trackMaterials) {
+                mesh.userData.trackMaterials.forEach(mat => {
+                    if (mat.map) {
+                        const scroll = ((data.trackOffset || 0) % 1 + 1) % 1;
+                        mat.map.offset.y = scroll;
+                        mat.map.needsUpdate = true;
+                    }
+                });
+            }
+
             if (data.type === 'HELICOPTER') {
                 const rotor = mesh.getObjectByName('rotor');
-                if (rotor) rotor.rotation.y += 0.5; // Spin
+                if (rotor && data.maxRPM) {
+                    const rpmRatio = Math.min(1, (data.rotorRPM || 0) / data.maxRPM);
+                    rotor.rotation.y += 0.2 + rpmRatio * 0.8;
+                }
             }
+        });
+    }
+
+    updateHelicopterUI() {
+        const hud = document.getElementById('heli-ui');
+        const bar = document.getElementById('heli-rpm-fill');
+        if (!hud || !bar) return;
+
+        const me = this.entities.get(this.net.myId);
+        const mounted = me?.mountedVehicle;
+        if (!mounted || !this.vehicles.has(mounted.vehicleId)) {
+            hud.style.display = 'none';
+            return;
         }
+
+        const vehicle = this.vehicles.get(mounted.vehicleId);
+        const data = vehicle?.lastState;
+        if (!data || data.type !== 'HELICOPTER' || !data.maxRPM) {
+            hud.style.display = 'none';
+            return;
+        }
+
+        const ratio = Math.min(1, Math.max(0, (data.rotorRPM || 0) / data.maxRPM));
+        bar.style.width = `${(ratio * 100).toFixed(1)}%`;
+        if (ratio < 0.35) bar.style.background = '#a00000';
+        else if (ratio < 0.6) bar.style.background = '#c8a200';
+        else bar.style.background = '#00a000';
+
+        hud.style.display = 'block';
     }
     
     animate() {
@@ -781,6 +891,8 @@ class GameClient {
             this.updateVehicles(snapshot.state);
         }
 
+        this.updateHelicopterUI();
+
         // 3. Third Person Camera Logic
         const camDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraRotation.y);
         const camRight = new THREE.Vector3(-camDir.z, 0, camDir.x);
@@ -801,7 +913,13 @@ class GameClient {
             y: finalMove.z,
             viewDir: { x: viewDir.x, y: viewDir.y, z: viewDir.z },
             jump: this.input.jump,
-            interact: this.input.interact
+            sprint: this.input.sprint,
+            interact: this.input.interact,
+            pitch: this.input.flight.pitch,
+            roll: this.input.flight.roll,
+            yaw: this.input.flight.yaw,
+            engineUp: this.input.flight.engineUp,
+            engineDown: this.input.flight.engineDown
         });
         this.input.interact = false;
         
