@@ -118,8 +118,8 @@ export default class Player {
 
         // Collect debug information for client + server visibility
         const debugPayload = {
-            origin: eyePos,
-            direction: dir,
+            origin: { ...eyePos },
+            direction: { ...dir },
             maxReach: maxReachMeters,
             hit: null
         };
@@ -133,7 +133,7 @@ export default class Player {
                 bodyHandle: hit.bodyHandle,
                 colliderHandle: hit.colliderHandle,
                 distance: distance,
-                point: hit.point,
+                point: hit.point ? { ...hit.point } : null,
                 mappedEntity: entity ? entity.type : null,
                 mappedId: entity && entity.instance ? entity.instance.id : null
             };

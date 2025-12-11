@@ -92,11 +92,18 @@ class PhysicsSystems {
 
             if (toi === null) return null;
 
+            const intersectionPoint = rayUsed.pointAt(toi);
+            const point = intersectionPoint && typeof intersectionPoint === 'object'
+                ? { x: intersectionPoint.x, y: intersectionPoint.y, z: intersectionPoint.z }
+                : null;
+
+            if (!point) return null;
+
             return {
                 colliderHandle,
                 bodyHandle: body ? body.handle : null,
                 distance: toi,
-                point: rayUsed.pointAt(toi)
+                point
             };
         };
 
@@ -106,12 +113,8 @@ class PhysicsSystems {
             true,
             undefined,
             undefined,
-            // Important: the sixth parameter is `filterExcludeCollider`, not
-            // `filterExcludeRigidBody`. Passing the handle here prevents the
-            // ray from immediately colliding with the player's own collider
-            // (which resulted in zero-distance hits).
-            excludeColliderHandle || undefined,
-            undefined
+            undefined,
+            excludeColliderHandle || undefined
         );
 
         const ray = new RAPIER.Ray(origin, direction);
