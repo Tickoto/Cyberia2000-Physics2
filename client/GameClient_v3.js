@@ -223,6 +223,10 @@ class GameClient {
             document.body.appendChild(menu);
             document.exitPointerLock();
         });
+
+        this.socket.on(NetworkManager.Packet.INTERACT_DEBUG, (data) => {
+            console.log('[Server Interaction Debug]', data);
+        });
         
         // 3. Input Listeners
         this.setupInput();
@@ -662,12 +666,17 @@ class GameClient {
             
             if (!this.vehicles.has(id)) {
                 const mesh = this.renderVehicle(data.type);
+                mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
                 this.scene.add(mesh);
                 this.vehicles.set(id, { mesh, type: data.type });
             }
-            
+
             const entity = this.vehicles.get(id);
             const mesh = entity.mesh;
+
+            if (!mesh.userData || !mesh.userData.vehicleId) {
+                mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
+            }
             
             mesh.position.set(data.x, data.y, data.z);
             mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
@@ -758,6 +767,7 @@ class GameClient {
             .applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraRotation.y)
             .normalize();
 
+        const interactTriggered = this.input.interact;
         const finalMove = new THREE.Vector3();
         finalMove.addScaledVector(camDir, -this.input.moveDir.y);
         finalMove.addScaledVector(camRight, this.input.moveDir.x);
@@ -817,6 +827,32 @@ class GameClient {
             const endPoint = headPos.clone().addScaledVector(viewDir, this.interactRange);
             if (interactHits.length > 0) {
                 endPoint.copy(interactHits[0].point);
+            }
+
+            if (interactTriggered) {
+                if (interactHits.length === 0) {
+                    console.warn('[Client Interaction Debug] No intersection found', {
+                        head: headPos.toArray(),
+                        direction: viewDir.toArray(),
+                        range: this.interactRange
+                    });
+                } else {
+                    const hit = interactHits[0];
+                    const chain = [];
+                    let current = hit.object;
+                    while (current) {
+                        chain.push(current.name || current.type || current.constructor?.name);
+                        current = current.parent;
+                    }
+
+                    console.log('[Client Interaction Debug] Hit detected', {
+                        distance: hit.distance,
+                        point: hit.point.toArray(),
+                        objectName: hit.object.name || hit.object.type,
+                        userData: hit.object.userData,
+                        parentChain: chain
+                    });
+                }
             }
 
             if (this.interactDebugLine) {
@@ -1037,12 +1073,17 @@ class GameClient {
             
             if (!this.vehicles.has(id)) {
                 const mesh = this.renderVehicle(data.type);
+                mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
                 this.scene.add(mesh);
                 this.vehicles.set(id, { mesh, type: data.type });
             }
-            
+
             const entity = this.vehicles.get(id);
             const mesh = entity.mesh;
+
+            if (!mesh.userData || !mesh.userData.vehicleId) {
+                mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
+            }
             
             mesh.position.set(data.x, data.y, data.z);
             mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
