@@ -3,7 +3,19 @@ export const isDebugOn = false;
 export const serverConfig = {
     tickRate: 60,
     gravity: { x: 0.0, y: -9.81, z: 0.0 },
-    port: 3000
+    port: 3000,
+    // Host address for server binding
+    // '0.0.0.0' = listen on all interfaces (allows remote connections)
+    // '127.0.0.1' = localhost only (local machine only)
+    host: '0.0.0.0'
+};
+
+// Client connection configuration
+// Set serverUrl to connect to a specific server address
+// null/empty = connect to same origin (default, works when served from the game server)
+// Example: 'http://192.168.1.100:3000' or 'http://your-server.com:3000'
+export const clientConfig = {
+    serverUrl: null
 };
 
 export const worldConfig = {
@@ -125,6 +137,7 @@ export const vehicleConfig = {
 export default {
     isDebugOn,
     serverConfig,
+    clientConfig,
     worldConfig,
     appearanceDefaults,
     gameplayConfig,
