@@ -72,9 +72,19 @@ class PhysicsSystems {
      * @param {number} maxDistance 
      * @returns {Object|null} Hit result or null
      */
-    raycastInteract(origin, direction, maxDistance = 5.0, excludeBodyHandle = null) {
+    raycastInteract(origin, direction, maxDistance = 5.0, excludeColliderHandle = null) {
         const ray = new RAPIER.Ray(origin, direction);
-        const hit = this.world.castRay(ray, maxDistance, true, undefined, undefined, undefined, excludeBodyHandle || undefined);
+        // Exclude the provided collider (usually the player's own) so the ray can hit
+        // nearby objects instead of immediately intersecting the player capsule.
+        const hit = this.world.castRay(
+            ray,
+            maxDistance,
+            true,
+            undefined,
+            undefined,
+            undefined,
+            excludeColliderHandle || undefined
+        );
 
         if (hit) {
             // Retrieve collider and parent body
