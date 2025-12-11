@@ -23,8 +23,16 @@ class GameClient {
             moveDir: { x: 0, y: 0 },
             viewDir: { x: 0, y: 0, z: -1 },
             jump: false,
-            interact: false
+            interact: false,
+            crouch: false,      // Shift key - throttle down for helicopter
+            yawLeft: false,     // Z key - yaw left
+            yawRight: false     // C key - yaw right
         };
+
+        // Track current mounted vehicle for UI
+        this.mountedVehicleId = null;
+        this.mountedVehicleType = null;
+        this.helicopterUI = null;
 
         this.interactRange = gameplayConfig.interactRange;
         this.interactRaycaster = new THREE.Raycaster();
@@ -568,6 +576,10 @@ class GameClient {
                 case 'KeyD': this.input.moveDir.x = down ? 1 : 0; break;
                 case 'Space': this.input.jump = down; break;
                 case 'KeyE': if (down) this.input.interact = true; break;
+                case 'ShiftLeft':
+                case 'ShiftRight': this.input.crouch = down; break;
+                case 'KeyZ': this.input.yawLeft = down; break;
+                case 'KeyC': this.input.yawRight = down; break;
             }
         };
 
@@ -629,95 +641,691 @@ class GameClient {
         });
     }
     
+    /**
+     * Creates procedural composite meshes for vehicles
+     * Each vehicle type has distinct visual elements
+     */
     renderVehicle(type) {
         const group = new THREE.Group();
-        
+
         if (type === 'JEEP') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 3), new THREE.MeshStandardMaterial({ color: 0x335533 }));
-            body.position.y = 0; // Centered
-            group.add(body);
-            // Wheels
-            const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3);
-            wheelGeo.rotateZ(Math.PI/2);
-            const wMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-            
-            const positions = [
-                [-0.9, -0.4, 1], [0.9, -0.4, 1],
-                [-0.9, -0.4, -1], [0.9, -0.4, -1]
-            ];
-            positions.forEach(p => {
-                const w = new THREE.Mesh(wheelGeo, wMat);
-                w.position.set(...p);
-                group.add(w);
+            // JEEP - Light military vehicle with visible suspension
+
+            // Main body (chassis)
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4a5d23, roughness: 0.8 });
+            const chassisGeo = new THREE.BoxGeometry(2.0, 0.5, 3.5);
+            const chassis = new THREE.Mesh(chassisGeo, bodyMat);
+            chassis.position.y = 0.3;
+            chassis.name = 'chassis';
+            group.add(chassis);
+
+            // Hood
+            const hoodGeo = new THREE.BoxGeometry(1.8, 0.4, 1.2);
+            const hood = new THREE.Mesh(hoodGeo, bodyMat);
+            hood.position.set(0, 0.7, 1.2);
+            group.add(hood);
+
+            // Windshield frame
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+            const windshieldFrame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.8, 0.1), frameMat);
+            windshieldFrame.position.set(0, 1.1, 0.5);
+            group.add(windshieldFrame);
+
+            // Roll cage
+            const cageMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            const rollBar1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), cageMat);
+            rollBar1.position.set(-0.75, 1.1, -0.2);
+            group.add(rollBar1);
+            const rollBar2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.8, 0.1), cageMat);
+            rollBar2.position.set(0.75, 1.1, -0.2);
+            group.add(rollBar2);
+            const rollBarTop = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.1, 0.1), cageMat);
+            rollBarTop.position.set(0, 1.5, -0.2);
+            group.add(rollBarTop);
+
+            // Rear section
+            const rearGeo = new THREE.BoxGeometry(1.8, 0.6, 1.0);
+            const rear = new THREE.Mesh(rearGeo, bodyMat);
+            rear.position.set(0, 0.5, -1.2);
+            group.add(rear);
+
+            // Fenders
+            const fenderMat = new THREE.MeshStandardMaterial({ color: 0x3d4d1a });
+            const fenderGeo = new THREE.BoxGeometry(0.4, 0.3, 0.8);
+            [[-1.0, 0.1, 1.2], [1.0, 0.1, 1.2], [-1.0, 0.1, -1.2], [1.0, 0.1, -1.2]].forEach(pos => {
+                const fender = new THREE.Mesh(fenderGeo, fenderMat);
+                fender.position.set(...pos);
+                group.add(fender);
             });
+
+            // Wheels with suspension - stored for animation
+            const wheelGroup = new THREE.Group();
+            wheelGroup.name = 'wheels';
+            const wheelPositions = [
+                { x: -0.85, y: -0.3, z: 1.2, name: 'wheel_fl' },
+                { x: 0.85, y: -0.3, z: 1.2, name: 'wheel_fr' },
+                { x: -0.85, y: -0.3, z: -1.2, name: 'wheel_rl' },
+                { x: 0.85, y: -0.3, z: -1.2, name: 'wheel_rr' }
+            ];
+
+            wheelPositions.forEach((wp, idx) => {
+                const wheelAssembly = new THREE.Group();
+                wheelAssembly.name = wp.name;
+                wheelAssembly.position.set(wp.x, wp.y, wp.z);
+                wheelAssembly.userData.baseY = wp.y;
+
+                // Tire
+                const tireGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 16);
+                tireGeo.rotateZ(Math.PI / 2);
+                const tireMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+                const tire = new THREE.Mesh(tireGeo, tireMat);
+                tire.name = 'tire';
+                wheelAssembly.add(tire);
+
+                // Rim
+                const rimGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.28, 8);
+                rimGeo.rotateZ(Math.PI / 2);
+                const rimMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8 });
+                const rim = new THREE.Mesh(rimGeo, rimMat);
+                wheelAssembly.add(rim);
+
+                // Hub detail
+                const hubGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.3, 6);
+                hubGeo.rotateZ(Math.PI / 2);
+                const hub = new THREE.Mesh(hubGeo, new THREE.MeshStandardMaterial({ color: 0x444444 }));
+                wheelAssembly.add(hub);
+
+                wheelGroup.add(wheelAssembly);
+            });
+            group.add(wheelGroup);
+
+            // Headlights
+            const lightMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffffcc, emissiveIntensity: 0.3 });
+            const lightGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.08, 8);
+            lightGeo.rotateX(Math.PI / 2);
+            [[-0.6, 0.65, 1.8], [0.6, 0.65, 1.8]].forEach(pos => {
+                const light = new THREE.Mesh(lightGeo, lightMat);
+                light.position.set(...pos);
+                group.add(light);
+            });
+
         } else if (type === 'TANK') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.0, 4.5), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-            body.position.y = 0;
-            group.add(body);
-            const turret = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 2.0), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-            turret.position.y = 0.9;
+            // TANK - Heavy armored vehicle with animated tracks
+
+            const armorMat = new THREE.MeshStandardMaterial({ color: 0x3d3d32, roughness: 0.7, metalness: 0.3 });
+            const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+
+            // Main hull
+            const hullGeo = new THREE.BoxGeometry(3.2, 1.0, 5.5);
+            const hull = new THREE.Mesh(hullGeo, armorMat);
+            hull.position.y = 0.8;
+            hull.name = 'hull';
+            group.add(hull);
+
+            // Sloped front armor
+            const frontArmorGeo = new THREE.BoxGeometry(3.0, 0.6, 1.0);
+            const frontArmor = new THREE.Mesh(frontArmorGeo, armorMat);
+            frontArmor.position.set(0, 0.5, 3.0);
+            frontArmor.rotation.x = -0.3;
+            group.add(frontArmor);
+
+            // Turret
+            const turretGeo = new THREE.CylinderGeometry(1.0, 1.2, 0.7, 8);
+            const turret = new THREE.Mesh(turretGeo, armorMat);
+            turret.position.set(0, 1.7, 0);
+            turret.name = 'turret';
             group.add(turret);
-            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-            barrel.rotation.x = Math.PI/2;
-            barrel.position.set(0, 0.9, 2.5);
+
+            // Turret hatch
+            const hatchGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.15, 8);
+            const hatch = new THREE.Mesh(hatchGeo, darkMat);
+            hatch.position.set(0.3, 2.1, -0.3);
+            group.add(hatch);
+
+            // Main gun barrel
+            const barrelGeo = new THREE.CylinderGeometry(0.12, 0.15, 4.0, 8);
+            barrelGeo.rotateX(Math.PI / 2);
+            const barrel = new THREE.Mesh(barrelGeo, darkMat);
+            barrel.position.set(0, 1.7, 3.5);
+            barrel.name = 'barrel';
             group.add(barrel);
+
+            // Muzzle brake
+            const muzzleGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.3, 8);
+            muzzleGeo.rotateX(Math.PI / 2);
+            const muzzle = new THREE.Mesh(muzzleGeo, darkMat);
+            muzzle.position.set(0, 1.7, 5.6);
+            group.add(muzzle);
+
+            // Track assemblies (left and right)
+            const trackMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.95 });
+
+            ['left', 'right'].forEach((side, sideIdx) => {
+                const trackGroup = new THREE.Group();
+                trackGroup.name = `track_${side}`;
+                const xOffset = side === 'left' ? -1.8 : 1.8;
+                trackGroup.position.x = xOffset;
+
+                // Track housing
+                const housingGeo = new THREE.BoxGeometry(0.6, 0.8, 5.8);
+                const housing = new THREE.Mesh(housingGeo, armorMat);
+                housing.position.y = 0.2;
+                trackGroup.add(housing);
+
+                // Track surface (animated)
+                const trackSurfaceGeo = new THREE.BoxGeometry(0.65, 0.15, 5.9);
+                const trackSurface = new THREE.Mesh(trackSurfaceGeo, trackMat);
+                trackSurface.position.y = -0.25;
+                trackSurface.name = 'trackSurface';
+                trackGroup.add(trackSurface);
+
+                // Track links pattern (visual detail)
+                for (let i = 0; i < 12; i++) {
+                    const linkGeo = new THREE.BoxGeometry(0.68, 0.05, 0.1);
+                    const link = new THREE.Mesh(linkGeo, darkMat);
+                    link.position.set(0, -0.35, -2.7 + i * 0.5);
+                    link.name = `link_${i}`;
+                    trackGroup.add(link);
+                }
+
+                // Road wheels (6 per side)
+                for (let i = 0; i < 6; i++) {
+                    const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.3, 12);
+                    wheelGeo.rotateZ(Math.PI / 2);
+                    const wheel = new THREE.Mesh(wheelGeo, darkMat);
+                    wheel.position.set(0, 0.1, -2.0 + i * 0.8);
+                    wheel.name = `roadwheel_${i}`;
+                    trackGroup.add(wheel);
+                }
+
+                // Drive sprocket (rear)
+                const sprocketGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.35, 12);
+                sprocketGeo.rotateZ(Math.PI / 2);
+                const sprocket = new THREE.Mesh(sprocketGeo, darkMat);
+                sprocket.position.set(0, 0.4, -2.5);
+                sprocket.name = 'sprocket';
+                trackGroup.add(sprocket);
+
+                // Idler wheel (front)
+                const idlerGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.35, 12);
+                idlerGeo.rotateZ(Math.PI / 2);
+                const idler = new THREE.Mesh(idlerGeo, darkMat);
+                idler.position.set(0, 0.4, 2.5);
+                idler.name = 'idler';
+                trackGroup.add(idler);
+
+                // Side skirts
+                const skirtGeo = new THREE.BoxGeometry(0.1, 0.5, 4.5);
+                const skirt = new THREE.Mesh(skirtGeo, armorMat);
+                skirt.position.set(side === 'left' ? 0.35 : -0.35, 0.5, 0);
+                trackGroup.add(skirt);
+
+                group.add(trackGroup);
+            });
+
+            // Exhaust pipes
+            const exhaustGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.8, 6);
+            const exhaustMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            [[-1.2, 1.5, -2.5], [-0.9, 1.5, -2.5]].forEach(pos => {
+                const exhaust = new THREE.Mesh(exhaustGeo, exhaustMat);
+                exhaust.position.set(...pos);
+                group.add(exhaust);
+            });
+
         } else if (type === 'HELICOPTER') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 4.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
-            body.position.y = 0;
-            group.add(body);
-            const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 3.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
-            tail.position.set(0, 0.2, -3.5);
+            // HELICOPTER - Military transport helicopter
+
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2d4a3a, roughness: 0.6 });
+            const darkMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 });
+            const glassMat = new THREE.MeshStandardMaterial({
+                color: 0x88ccff,
+                transparent: true,
+                opacity: 0.4,
+                metalness: 0.9
+            });
+
+            // Main fuselage
+            const fuselageGeo = new THREE.BoxGeometry(2.2, 2.0, 5.0);
+            const fuselage = new THREE.Mesh(fuselageGeo, bodyMat);
+            fuselage.position.y = 0;
+            fuselage.name = 'fuselage';
+            group.add(fuselage);
+
+            // Nose section (tapered)
+            const noseGeo = new THREE.BoxGeometry(1.8, 1.4, 1.5);
+            const nose = new THREE.Mesh(noseGeo, bodyMat);
+            nose.position.set(0, -0.2, 3.0);
+            group.add(nose);
+
+            // Cockpit windows
+            const windowGeo = new THREE.BoxGeometry(1.6, 0.8, 0.1);
+            const cockpitWindow = new THREE.Mesh(windowGeo, glassMat);
+            cockpitWindow.position.set(0, 0.3, 3.8);
+            cockpitWindow.rotation.x = -0.3;
+            group.add(cockpitWindow);
+
+            // Side windows
+            [[-1.15, 0.3, 1.5], [1.15, 0.3, 1.5]].forEach((pos, idx) => {
+                const sideWindow = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.6, 1.2), glassMat);
+                sideWindow.position.set(...pos);
+                group.add(sideWindow);
+            });
+
+            // Tail boom
+            const tailGeo = new THREE.BoxGeometry(0.6, 0.6, 4.0);
+            const tail = new THREE.Mesh(tailGeo, bodyMat);
+            tail.position.set(0, 0.3, -4.5);
+            tail.name = 'tail';
             group.add(tail);
-            // Rotor
-            const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 7.0), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-            rotor.position.y = 1.0;
-            rotor.name = 'rotor'; // Tag for animation
-            group.add(rotor);
+
+            // Tail fin (vertical stabilizer)
+            const finGeo = new THREE.BoxGeometry(0.1, 1.5, 1.0);
+            const fin = new THREE.Mesh(finGeo, bodyMat);
+            fin.position.set(0, 1.0, -6.0);
+            group.add(fin);
+
+            // Horizontal stabilizer
+            const hStabGeo = new THREE.BoxGeometry(2.0, 0.1, 0.6);
+            const hStab = new THREE.Mesh(hStabGeo, bodyMat);
+            hStab.position.set(0, 0.8, -6.2);
+            group.add(hStab);
+
+            // Main rotor mast
+            const mastGeo = new THREE.CylinderGeometry(0.15, 0.2, 0.8, 8);
+            const mast = new THREE.Mesh(mastGeo, darkMat);
+            mast.position.set(0, 1.4, 0.5);
+            group.add(mast);
+
+            // Main rotor hub
+            const hubGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8);
+            const hub = new THREE.Mesh(hubGeo, darkMat);
+            hub.position.set(0, 1.9, 0.5);
+            hub.name = 'rotorHub';
+            group.add(hub);
+
+            // Main rotor assembly (4 blades)
+            const rotorGroup = new THREE.Group();
+            rotorGroup.name = 'mainRotor';
+            rotorGroup.position.set(0, 2.0, 0.5);
+
+            for (let i = 0; i < 4; i++) {
+                const bladeGeo = new THREE.BoxGeometry(0.25, 0.05, 5.0);
+                const blade = new THREE.Mesh(bladeGeo, darkMat);
+                blade.position.z = 2.5;
+                blade.rotation.y = (i * Math.PI) / 2;
+
+                const bladePivot = new THREE.Group();
+                bladePivot.add(blade);
+                bladePivot.rotation.y = (i * Math.PI) / 2;
+                rotorGroup.add(bladePivot);
+            }
+            group.add(rotorGroup);
+
+            // Tail rotor assembly
+            const tailRotorGroup = new THREE.Group();
+            tailRotorGroup.name = 'tailRotor';
+            tailRotorGroup.position.set(0.35, 0.8, -6.3);
+            tailRotorGroup.rotation.z = Math.PI / 2;
+
+            for (let i = 0; i < 4; i++) {
+                const tBladeGeo = new THREE.BoxGeometry(0.08, 0.02, 0.8);
+                const tBlade = new THREE.Mesh(tBladeGeo, darkMat);
+                tBlade.position.z = 0.4;
+
+                const tBladePivot = new THREE.Group();
+                tBladePivot.add(tBlade);
+                tBladePivot.rotation.y = (i * Math.PI) / 2;
+                tailRotorGroup.add(tBladePivot);
+            }
+            group.add(tailRotorGroup);
+
+            // Landing skids
+            const skidMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            ['left', 'right'].forEach((side, idx) => {
+                const xOff = side === 'left' ? -1.0 : 1.0;
+
+                // Main skid tube
+                const skidGeo = new THREE.CylinderGeometry(0.08, 0.08, 4.0, 8);
+                skidGeo.rotateX(Math.PI / 2);
+                const skid = new THREE.Mesh(skidGeo, skidMat);
+                skid.position.set(xOff, -1.3, 0.5);
+                group.add(skid);
+
+                // Support struts
+                [1.2, -0.8].forEach(zOff => {
+                    const strutGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.0, 6);
+                    const strut = new THREE.Mesh(strutGeo, skidMat);
+                    strut.position.set(xOff, -0.8, zOff);
+                    strut.rotation.z = idx === 0 ? 0.2 : -0.2;
+                    group.add(strut);
+                });
+            });
+
+            // Engine housing
+            const engineGeo = new THREE.BoxGeometry(1.8, 0.8, 1.5);
+            const engine = new THREE.Mesh(engineGeo, bodyMat);
+            engine.position.set(0, 1.2, -0.5);
+            group.add(engine);
+
+            // Exhaust
+            const exhaustGeo = new THREE.CylinderGeometry(0.15, 0.12, 0.6, 8);
+            exhaustGeo.rotateX(Math.PI / 2);
+            const exhaust = new THREE.Mesh(exhaustGeo, darkMat);
+            exhaust.position.set(0.5, 1.3, -1.5);
+            group.add(exhaust);
         }
-        
+
         return group;
     }
 
-    updateVehicles(vehicleState) {
-        if (!vehicleState) return;
-        
-        // Remove missing
-        const currentIds = new Set(Object.keys(vehicleState));
-        for (const [id, entity] of this.vehicles) {
-            if (!currentIds.has(id)) {
-                this.scene.remove(entity.mesh);
-                this.vehicles.delete(id);
+    /**
+     * Animate Jeep wheels based on suspension compression and rotation
+     */
+    animateJeep(mesh, data) {
+        const wheelsGroup = mesh.getObjectByName('wheels');
+        if (!wheelsGroup) return;
+
+        const wheelNames = ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'];
+        const suspensionCompression = data.suspensionCompression || [0, 0, 0, 0];
+        const wheelRotations = data.wheelRotations || [0, 0, 0, 0];
+        const steerAngle = data.steerAngle || 0;
+
+        wheelNames.forEach((name, idx) => {
+            const wheel = wheelsGroup.getObjectByName(name);
+            if (wheel) {
+                // Vertical movement based on suspension compression
+                const baseY = wheel.userData.baseY || -0.3;
+                const compression = suspensionCompression[idx] || 0;
+                wheel.position.y = baseY + compression * 0.5;
+
+                // Wheel rotation based on velocity
+                const tire = wheel.getObjectByName('tire');
+                if (tire) {
+                    tire.rotation.x = wheelRotations[idx] || 0;
+                }
+
+                // Front wheel steering
+                if (idx < 2) {
+                    wheel.rotation.y = steerAngle;
+                }
+            }
+        });
+    }
+
+    /**
+     * Animate Tank tracks and road wheels
+     */
+    animateTank(mesh, data) {
+        const leftTrack = mesh.getObjectByName('track_left');
+        const rightTrack = mesh.getObjectByName('track_right');
+
+        const leftTrackSpeed = data.leftTrackSpeed || 0;
+        const rightTrackSpeed = data.rightTrackSpeed || 0;
+
+        // Animate track links and road wheels
+        [leftTrack, rightTrack].forEach((track, trackIdx) => {
+            if (!track) return;
+
+            const trackSpeed = trackIdx === 0 ? leftTrackSpeed : rightTrackSpeed;
+
+            // Rotate road wheels
+            for (let i = 0; i < 6; i++) {
+                const wheel = track.getObjectByName(`roadwheel_${i}`);
+                if (wheel) {
+                    wheel.rotation.x += trackSpeed * 0.05;
+                }
+            }
+
+            // Rotate sprocket and idler
+            const sprocket = track.getObjectByName('sprocket');
+            const idler = track.getObjectByName('idler');
+            if (sprocket) sprocket.rotation.x += trackSpeed * 0.05;
+            if (idler) idler.rotation.x += trackSpeed * 0.05;
+
+            // Animate track links (UV offset simulation via position)
+            for (let i = 0; i < 12; i++) {
+                const link = track.getObjectByName(`link_${i}`);
+                if (link) {
+                    // Move links along track
+                    link.position.z += trackSpeed * 0.01;
+                    // Wrap around
+                    if (link.position.z > 3.0) link.position.z -= 6.0;
+                    if (link.position.z < -3.0) link.position.z += 6.0;
+                }
+            }
+        });
+    }
+
+    /**
+     * Animate Helicopter rotors based on RPM
+     */
+    animateHelicopter(mesh, data, entity) {
+        const mainRotor = mesh.getObjectByName('mainRotor');
+        const tailRotor = mesh.getObjectByName('tailRotor');
+
+        // RPM-based rotor speed
+        const rpm = data.rpm || 0;
+        const maxRpm = data.maxRpm || 400;
+        const rpmRatio = rpm / maxRpm;
+
+        // Store RPM for UI
+        entity.lastRPM = rpm;
+        entity.maxRPM = maxRpm;
+        entity.rpmRatio = rpmRatio;
+
+        // Main rotor rotation speed based on RPM
+        const rotorSpeed = rpmRatio * 0.8; // Max speed at full RPM
+        if (mainRotor) {
+            mainRotor.rotation.y += rotorSpeed;
+        }
+
+        // Tail rotor spins faster
+        if (tailRotor) {
+            tailRotor.rotation.y += rotorSpeed * 1.5;
+        }
+    }
+
+    /**
+     * Creates helicopter HUD with RPM gauge
+     */
+    createHelicopterUI() {
+        // Remove existing UI if any
+        this.removeHelicopterUI();
+
+        const container = document.createElement('div');
+        container.id = 'helicopter-hud';
+        container.style.cssText = `
+            position: fixed;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 20, 0, 0.85);
+            border: 2px solid #0f0;
+            border-radius: 10px;
+            padding: 15px 25px;
+            font-family: 'VT323', monospace;
+            color: #0f0;
+            z-index: 1000;
+            min-width: 300px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        `;
+
+        // Title
+        const title = document.createElement('div');
+        title.style.cssText = 'font-size: 14px; text-align: center; margin-bottom: 10px; letter-spacing: 2px;';
+        title.textContent = 'HELICOPTER SYSTEMS';
+        container.appendChild(title);
+
+        // RPM Gauge Container
+        const gaugeContainer = document.createElement('div');
+        gaugeContainer.style.cssText = 'margin-bottom: 10px;';
+
+        const rpmLabel = document.createElement('div');
+        rpmLabel.style.cssText = 'display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px;';
+        rpmLabel.innerHTML = '<span>ROTOR RPM</span><span id="rpm-value">0</span>';
+        gaugeContainer.appendChild(rpmLabel);
+
+        const gaugeOuter = document.createElement('div');
+        gaugeOuter.style.cssText = `
+            width: 100%;
+            height: 20px;
+            background: #001100;
+            border: 1px solid #0f0;
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        `;
+
+        // Threshold marker at 60%
+        const thresholdMarker = document.createElement('div');
+        thresholdMarker.style.cssText = `
+            position: absolute;
+            left: 60%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #ff0;
+            z-index: 2;
+        `;
+        gaugeOuter.appendChild(thresholdMarker);
+
+        const gaugeFill = document.createElement('div');
+        gaugeFill.id = 'rpm-gauge-fill';
+        gaugeFill.style.cssText = `
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff0000 0%, #ff0000 30%, #ffff00 50%, #00ff00 70%, #00ff00 100%);
+            transition: width 0.1s ease-out;
+            position: relative;
+            z-index: 1;
+        `;
+        gaugeOuter.appendChild(gaugeFill);
+        gaugeContainer.appendChild(gaugeOuter);
+        container.appendChild(gaugeContainer);
+
+        // Status indicators
+        const statusRow = document.createElement('div');
+        statusRow.style.cssText = 'display: flex; justify-content: space-around; font-size: 11px;';
+
+        const liftStatus = document.createElement('div');
+        liftStatus.id = 'lift-status';
+        liftStatus.style.cssText = 'text-align: center;';
+        liftStatus.innerHTML = '<div style="color: #666;">LIFT</div><div id="lift-indicator" style="color: #f00;">STALL</div>';
+        statusRow.appendChild(liftStatus);
+
+        const engineStatus = document.createElement('div');
+        engineStatus.id = 'engine-status';
+        engineStatus.style.cssText = 'text-align: center;';
+        engineStatus.innerHTML = '<div style="color: #666;">ENGINE</div><div id="engine-indicator" style="color: #ff0;">IDLE</div>';
+        statusRow.appendChild(engineStatus);
+
+        container.appendChild(statusRow);
+
+        // Controls hint
+        const controlsHint = document.createElement('div');
+        controlsHint.style.cssText = 'font-size: 10px; color: #666; text-align: center; margin-top: 10px; border-top: 1px solid #333; padding-top: 8px;';
+        controlsHint.innerHTML = 'SPACE: Throttle Up | SHIFT: Throttle Down<br>W/S: Pitch | A/D: Roll | Z/C: Yaw';
+        container.appendChild(controlsHint);
+
+        document.body.appendChild(container);
+        this.helicopterUI = container;
+    }
+
+    /**
+     * Updates helicopter UI with current RPM data
+     */
+    updateHelicopterUI(rpmRatio, isEngineRunning) {
+        if (!this.helicopterUI) return;
+
+        const rpmFill = document.getElementById('rpm-gauge-fill');
+        const rpmValue = document.getElementById('rpm-value');
+        const liftIndicator = document.getElementById('lift-indicator');
+        const engineIndicator = document.getElementById('engine-indicator');
+
+        if (rpmFill) {
+            rpmFill.style.width = `${rpmRatio * 100}%`;
+        }
+
+        if (rpmValue) {
+            rpmValue.textContent = `${Math.round(rpmRatio * 100)}%`;
+        }
+
+        // Update lift status
+        if (liftIndicator) {
+            if (rpmRatio >= 0.6) {
+                liftIndicator.textContent = 'FLYABLE';
+                liftIndicator.style.color = '#0f0';
+            } else if (rpmRatio >= 0.4) {
+                liftIndicator.textContent = 'LOW';
+                liftIndicator.style.color = '#ff0';
+            } else {
+                liftIndicator.textContent = 'STALL';
+                liftIndicator.style.color = '#f00';
             }
         }
 
-        // Add/Update
-        for (const id in vehicleState) {
-            const data = vehicleState[id];
-            
-            if (!this.vehicles.has(id)) {
-                const mesh = this.renderVehicle(data.type);
-                mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
-                this.scene.add(mesh);
-                this.vehicles.set(id, { mesh, type: data.type });
-            }
-
-            const entity = this.vehicles.get(id);
-            const mesh = entity.mesh;
-
-            if (!mesh.userData || !mesh.userData.vehicleId) {
-                mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
-            }
-            
-            mesh.position.set(data.x, data.y, data.z);
-            mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
-            
-            if (data.type === 'HELICOPTER') {
-                const rotor = mesh.getObjectByName('rotor');
-                if (rotor) rotor.rotation.y += 0.5; // Spin
+        // Update engine status
+        if (engineIndicator) {
+            if (rpmRatio >= 0.9) {
+                engineIndicator.textContent = 'MAX';
+                engineIndicator.style.color = '#0f0';
+            } else if (rpmRatio >= 0.6) {
+                engineIndicator.textContent = 'NOMINAL';
+                engineIndicator.style.color = '#0f0';
+            } else if (isEngineRunning || rpmRatio > 0.15) {
+                engineIndicator.textContent = 'SPOOLING';
+                engineIndicator.style.color = '#ff0';
+            } else {
+                engineIndicator.textContent = 'IDLE';
+                engineIndicator.style.color = '#666';
             }
         }
     }
-    
+
+    /**
+     * Removes helicopter UI from DOM
+     */
+    removeHelicopterUI() {
+        if (this.helicopterUI) {
+            this.helicopterUI.remove();
+            this.helicopterUI = null;
+        }
+    }
+
+    /**
+     * Updates vehicle mount UI based on current mounted vehicle state
+     * Shows helicopter HUD when piloting a helicopter, hides otherwise
+     */
+    updateVehicleMountUI() {
+        if (!this.net.myId || !this.entities.has(this.net.myId)) {
+            this.removeHelicopterUI();
+            return;
+        }
+
+        const me = this.entities.get(this.net.myId);
+        const mountedVehicle = me.mountedVehicle;
+
+        // Check if we're mounted in a helicopter as the pilot (seat 0)
+        if (mountedVehicle && mountedVehicle.vehicleId && mountedVehicle.seat === 0) {
+            const vehicleEntity = this.vehicles.get(mountedVehicle.vehicleId);
+
+            if (vehicleEntity && vehicleEntity.type === 'HELICOPTER') {
+                // Show helicopter UI if not already visible
+                if (!this.helicopterUI) {
+                    this.createHelicopterUI();
+                }
+
+                // Update helicopter UI with current RPM data
+                const rpmRatio = vehicleEntity.rpmRatio || 0;
+                this.updateHelicopterUI(rpmRatio, vehicleEntity.lastRPM > 60);
+                return;
+            }
+        }
+
+        // Not piloting a helicopter, hide UI
+        this.removeHelicopterUI();
+    }
+
     animate() {
         requestAnimationFrame(() => this.animate());
 
@@ -802,14 +1410,21 @@ class GameClient {
         finalMove.addScaledVector(camDir, -this.input.moveDir.y);
         finalMove.addScaledVector(camRight, this.input.moveDir.x);
 
+        // Send input including helicopter-specific controls
         this.net.sendInput({
             x: finalMove.x,
             y: finalMove.z,
             viewDir: { x: viewDir.x, y: viewDir.y, z: viewDir.z },
             jump: this.input.jump,
-            interact: this.input.interact
+            interact: this.input.interact,
+            crouch: this.input.crouch,
+            yawLeft: this.input.yawLeft,
+            yawRight: this.input.yawRight
         });
         this.input.interact = false;
+
+        // Handle helicopter UI visibility based on mounted vehicle
+        this.updateVehicleMountUI();
         
         // Chunk Update
         this.updateChunks();
@@ -1100,28 +1715,26 @@ class GameClient {
         }
     }
 
+    /**
+     * Updates vehicles from state array (used in animate loop)
+     * Handles creation, positioning, and animation of all vehicle types
+     */
     updateVehicles(stateArray) {
         if (!stateArray) return;
-        
+
         const validIds = new Set();
-        
+
         stateArray.forEach(data => {
             if (!['JEEP', 'TANK', 'HELICOPTER'].includes(data.type)) return;
-            // Additional check: Vehicles from /spawnvehicle use 'veh_' prefix usually, 
-            // but AI tanks use 'TEAM_TANK_...'.
-            // If we want to render AI tanks as Vehicles, we should allow them here.
-            // But `updateEntities` renders them as Boxes.
-            // Let's prioritize `updateVehicles` for anything matching the type.
-            // And ensure `updateEntities` skips them.
-            
+
             const id = data.id;
             validIds.add(id);
-            
+
             if (!this.vehicles.has(id)) {
                 const mesh = this.renderVehicle(data.type);
                 mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
                 this.scene.add(mesh);
-                this.vehicles.set(id, { mesh, type: data.type });
+                this.vehicles.set(id, { mesh, type: data.type, lastRPM: 0, rpmRatio: 0 });
             }
 
             const entity = this.vehicles.get(id);
@@ -1130,17 +1743,21 @@ class GameClient {
             if (!mesh.userData || !mesh.userData.vehicleId) {
                 mesh.userData = { type: 'VEHICLE', vehicleId: id, vehicleType: data.type };
             }
-            
+
             mesh.position.set(data.x, data.y, data.z);
             mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
-            
-            if (data.type === 'HELICOPTER') {
-                const rotor = mesh.getObjectByName('rotor');
-                if (rotor) rotor.rotation.y += 0.5; 
+
+            // Animate vehicle-specific elements based on physics state
+            if (data.type === 'JEEP') {
+                this.animateJeep(mesh, data);
+            } else if (data.type === 'TANK') {
+                this.animateTank(mesh, data);
+            } else if (data.type === 'HELICOPTER') {
+                this.animateHelicopter(mesh, data, entity);
             }
         });
 
-        // Remove missing
+        // Remove missing vehicles
         for (const [id, entity] of this.vehicles) {
             if (!validIds.has(id)) {
                 this.scene.remove(entity.mesh);
