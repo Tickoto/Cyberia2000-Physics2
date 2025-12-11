@@ -107,6 +107,10 @@ class PhysicsSystems {
             };
         };
 
+        const excludeHandle = excludeColliderHandle === null
+            ? undefined
+            : excludeColliderHandle;
+
         const castRay = (ray, distance) => this.world.castRay(
             ray,
             distance,
@@ -114,7 +118,7 @@ class PhysicsSystems {
             undefined,
             undefined,
             undefined,
-            excludeColliderHandle || undefined
+            excludeHandle
         );
 
         const ray = new RAPIER.Ray(origin, direction);
