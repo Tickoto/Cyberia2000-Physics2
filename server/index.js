@@ -77,7 +77,14 @@ io.on('connection', (socket) => {
             spawnY = generator.getGroundHeight(spawnX, spawnZ) + 2.0;
         }
 
-        const player = new Player(socket, physicsWorld, { x: spawnX, y: spawnY, z: spawnZ }, physicsSystems, physicsHandleMap);
+        const player = new Player(
+            socket,
+            physicsWorld,
+            { x: spawnX, y: spawnY, z: spawnZ },
+            physicsSystems,
+            physicsHandleMap,
+            vehicles
+        );
         players.set(socket.id, player);
 
         // Send initial state (No world data, client requests chunks)
@@ -258,15 +265,56 @@ io.on('connection', (socket) => {
         // Team logic omitted for brevity
     });
 
+    socket.on(NetworkManager.Packet.ENTER_VEHICLE, (data) => handleVehicleEntry(socket, data));
+
     socket.on('disconnect', () => {
         console.log('Player disconnected:', socket.id);
         if (players.has(socket.id)) {
             const p = players.get(socket.id);
+            p.dismountVehicle();
             physicsWorld.removeRigidBody(p.rigidBody);
             players.delete(socket.id);
         }
     });
 });
+
+function handleVehicleEntry(socket, payload) {
+    const { vehicleId, seat } = payload || {};
+    if (!vehicleId || seat === undefined) return;
+
+    const player = players.get(socket.id);
+    const vehicle = vehicles.get(vehicleId);
+
+    if (!player || !vehicle) return;
+
+    const seatIndex = Number(seat);
+    if (Number.isNaN(seatIndex) || seatIndex < 0 || seatIndex >= vehicle.seats.length) return;
+
+    // Seat already taken by someone else
+    if (vehicle.seats[seatIndex] && vehicle.seats[seatIndex] !== socket.id) {
+        socket.emit(NetworkManager.Packet.VEHICLE_MOUNTED, {
+            success: false,
+            reason: 'Seat occupied',
+            vehicleId,
+            seat: seatIndex
+        });
+        return;
+    }
+
+    // Free previous mount if any
+    player.dismountVehicle();
+
+    vehicle.seats[seatIndex] = socket.id;
+    player.mountVehicle(vehicleId, seatIndex);
+
+    const seatPos = vehicle.getSeatWorldPosition(seatIndex);
+    socket.emit(NetworkManager.Packet.VEHICLE_MOUNTED, {
+        success: true,
+        vehicleId,
+        seat: seatIndex,
+        position: seatPos || player.data.position
+    });
+}
 
 function serializeState() {
     const state = {

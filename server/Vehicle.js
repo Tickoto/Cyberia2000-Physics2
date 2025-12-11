@@ -13,7 +13,7 @@ export default class Vehicle {
         this.health = 100;
         this.maxHealth = 100;
         this.seats = [];
-        
+
         const seatCount = type === 'JEEP' ? 4 : (type === 'TANK' ? 2 : 6);
         for(let i=0; i<seatCount; i++) this.seats.push(null); // null = empty, string = playerId
 
@@ -33,10 +33,10 @@ export default class Vehicle {
             
             this.chassis = this.world.createRigidBody(bodyDesc);
             const collider = RAPIER.ColliderDesc.cuboid(1.5, 1.0, 3.0);
-            this.world.createCollider(collider, this.chassis);
-            this.bodies.push(this.chassis);
-            return;
-        }
+        this.world.createCollider(collider, this.chassis);
+        this.bodies.push(this.chassis);
+        return;
+    }
 
         // Land Vehicles (Jeep, Tank)
         const isTank = this.type === 'TANK';
@@ -94,6 +94,62 @@ export default class Vehicle {
             this.wheels.push({ body: wheelBody, joint, index });
             this.joints.push(joint);
         });
+    }
+
+    getSeatOffsets() {
+        if (this.type === 'JEEP') {
+            return [
+                { x: -0.6, y: 1.0, z: 0.8 }, // Driver
+                { x: 0.6, y: 1.0, z: 0.8 },
+                { x: -0.6, y: 1.0, z: -0.8 },
+                { x: 0.6, y: 1.0, z: -0.8 },
+            ];
+        }
+
+        if (this.type === 'TANK') {
+            return [
+                { x: 0, y: 1.2, z: 0.5 },
+                { x: 0, y: 1.2, z: -0.5 },
+            ];
+        }
+
+        // HELICOPTER default (6 seats)
+        return [
+            { x: -0.6, y: 1.2, z: 1.2 },
+            { x: 0.6, y: 1.2, z: 1.2 },
+            { x: -0.6, y: 1.2, z: 0 },
+            { x: 0.6, y: 1.2, z: 0 },
+            { x: -0.6, y: 1.2, z: -1.2 },
+            { x: 0.6, y: 1.2, z: -1.2 },
+        ];
+    }
+
+    getSeatWorldPosition(seatIndex) {
+        const offsets = this.getSeatOffsets();
+        const offset = offsets[seatIndex];
+        if (!offset || !this.chassis) return null;
+
+        const t = this.chassis.translation();
+        const r = this.chassis.rotation();
+
+        // Rotate offset by chassis orientation
+        const qx = r.x, qy = r.y, qz = r.z, qw = r.w;
+        const ox = offset.x, oy = offset.y, oz = offset.z;
+
+        const ix =  qw * ox + qy * oz - qz * oy;
+        const iy =  qw * oy + qz * ox - qx * oz;
+        const iz =  qw * oz + qx * oy - qy * ox;
+        const iw = -qx * ox - qy * oy - qz * oz;
+
+        const rx = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+        const ry = iy * qw + iw * -qy + iz * -qx - ix * -qz;
+        const rz = iz * qw + iw * -qz + ix * -qy - iy * -qx;
+
+        return {
+            x: t.x + rx,
+            y: t.y + ry,
+            z: t.z + rz,
+        };
     }
 
     update(dt) {

@@ -134,6 +134,27 @@ class GameClient {
             this.loadChunk(chunkData);
         });
 
+        this.socket.on(NetworkManager.Packet.VEHICLE_MOUNTED, (data) => {
+            if (!data || !data.vehicleId) return;
+
+            if (!data.success) {
+                console.warn(`Failed to enter vehicle seat ${data.seat}: ${data.reason || 'Unknown reason'}`);
+                return;
+            }
+
+            const myEntity = this.entities.get(this.net.myId);
+            if (myEntity && data.position) {
+                myEntity.mesh.position.set(data.position.x, data.position.y, data.position.z);
+            }
+
+            if (this.net.networkState?.players && this.net.networkState.players[this.net.myId] && data.position) {
+                const p = this.net.networkState.players[this.net.myId];
+                p.x = data.position.x;
+                p.y = data.position.y;
+                p.z = data.position.z;
+            }
+        });
+
         this.socket.on(NetworkManager.Packet.INTERACT_MENU, (data) => {
             console.log("Interaction Menu:", data);
             const existing = document.getElementById('interact-menu');
@@ -184,7 +205,10 @@ class GameClient {
                         btn.onmouseleave = () => btn.style.background = bgColor;
                         btn.onclick = () => {
                             console.log(`Entering ${data.vehicleType} seat ${seat.id}`);
-                            // this.socket.emit('ENTER_VEHICLE', { vehicleId: data.targetId, seat: seat.id });
+                            this.socket.emit(NetworkManager.Packet.ENTER_VEHICLE, {
+                                vehicleId: data.targetId,
+                                seat: seat.id
+                            });
                             menu.remove();
                             document.body.requestPointerLock();
                         };
