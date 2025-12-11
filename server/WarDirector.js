@@ -1,4 +1,5 @@
 import AIUnit from './AIUnit.js';
+import { Faction } from './Factions.js';
 
 class WarDirector {
     constructor(world, worldData, physicsSystems, generator) {
@@ -6,67 +7,76 @@ class WarDirector {
         this.worldData = worldData; // Access to POIs for bases/resources
         this.physicsSystems = physicsSystems;
         this.generator = generator;
-        
+
+        // Use new faction enums from Geopolitical Macro-Layer
         this.factions = {
-            RED: { resources: 100, units: [], base: null },
-            BLUE: { resources: 100, units: [], base: null },
-            GREEN: { resources: 100, units: [], base: null },
-            PURPLE: { resources: 100, units: [], base: null }
+            [Faction.CHROMA_CORP]: { resources: 100, units: [], base: null },
+            [Faction.IRON_SYNOD]: { resources: 100, units: [], base: null },
+            [Faction.VERDANT_LINK]: { resources: 100, units: [], base: null },
+            [Faction.NULL_DRIFTERS]: { resources: 100, units: [], base: null }
         };
-        
+
         this.allUnits = new Map(); // Global registry id -> AIUnit
-        
+
         this.initFactions();
     }
 
     initFactions() {
-        // Assign Bases from World POIs
+        // Assign Bases from World POIs - prioritize faction-specific settlements
         const pois = (this.worldData && this.worldData.pois) ? this.worldData.pois : [];
         const keys = Object.keys(this.factions);
-        
-        // Try to find MILITARY_BASE POIs first, otherwise any POI
-        const bases = pois.filter(p => p.type === 'MILITARY_BASE');
-        const backups = pois.filter(p => p.type !== 'MILITARY_BASE');
-        const availableBases = [...bases, ...backups];
 
-        keys.forEach((key, index) => {
-            if (index < availableBases.length) {
-                this.factions[key].base = availableBases[index];
-                console.log(`Faction ${key} established base at ${availableBases[index].id}`);
-                
-                // Spawn initial defense
-                this.spawnUnit(key, 'SOLDIER', availableBases[index]);
-                this.spawnUnit(key, 'SOLDIER', availableBases[index]);
-                this.spawnUnit(key, 'TRUCK', availableBases[index]);
-            } else {
-                // Fallback base for infinite world if no POI found
-                // Place them around origin if no POIs
-                const angle = (index / keys.length) * Math.PI * 2;
+        // For each faction, find their capital or best settlement
+        keys.forEach((factionKey, index) => {
+            // First try to find this faction's capital (MILITARY_BASE type)
+            let factionBase = pois.find(p =>
+                p.faction === factionKey && p.type === 'MILITARY_BASE'
+            );
+
+            // If no capital, find any settlement belonging to this faction
+            if (!factionBase) {
+                factionBase = pois.find(p => p.faction === factionKey);
+            }
+
+            // If still no base, use fallback position based on quadrant
+            if (!factionBase) {
+                const quadrants = {
+                    [Faction.CHROMA_CORP]: { x: 1, z: 1 },     // NE
+                    [Faction.IRON_SYNOD]: { x: -1, z: 1 },    // NW
+                    [Faction.VERDANT_LINK]: { x: 1, z: -1 },  // SE
+                    [Faction.NULL_DRIFTERS]: { x: -1, z: -1 } // SW
+                };
+
+                const quad = quadrants[factionKey] || { x: 0, z: 0 };
                 const radius = 50;
-                
-                // Calculate position
-                const bx = Math.cos(angle) * radius;
-                const bz = Math.sin(angle) * radius;
-                
-                // Get terrain height if generator available
+
+                const bx = quad.x * radius;
+                const bz = quad.z * radius;
+
                 let by = 5;
                 if (this.generator) {
                     by = this.generator.getGroundHeight(bx, bz);
                 }
 
-                const fb = {
-                    id: `base_${key}`,
+                factionBase = {
+                    id: `base_${factionKey}`,
                     x: bx,
-                    y: bz, // 2D map Y is World Z
-                    z: by, // Height
-                    type: 'MILITARY_BASE'
+                    y: bz,
+                    z: by,
+                    type: 'MILITARY_BASE',
+                    faction: factionKey
                 };
-                this.factions[key].base = fb;
-                console.log(`Faction ${key} established fallback base at ${fb.x}, ${fb.y}`);
-                
-                this.spawnUnit(key, 'SOLDIER', fb);
-                this.spawnUnit(key, 'SOLDIER', fb);
+                console.log(`[WarDirector] ${factionKey} established fallback base at ${bx.toFixed(0)}, ${bz.toFixed(0)}`);
+            } else {
+                console.log(`[WarDirector] ${factionKey} established base at settlement ${factionBase.id}`);
             }
+
+            this.factions[factionKey].base = factionBase;
+
+            // Spawn initial defense
+            this.spawnUnit(factionKey, 'SOLDIER', factionBase);
+            this.spawnUnit(factionKey, 'SOLDIER', factionBase);
+            this.spawnUnit(factionKey, 'TRUCK', factionBase);
         });
     }
 

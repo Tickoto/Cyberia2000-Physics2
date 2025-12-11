@@ -12,6 +12,7 @@ import PhysicsSystems from './PhysicsSystems.js';
 import Player from './Player.js';
 import WarDirector from './WarDirector.js';
 import Vehicle from './Vehicle.js';
+import { GeopoliticalMacroLayer, Faction } from './GeopoliticalMacroLayer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,27 +40,55 @@ let worldData; // Store generated world
 let physicsSystems;
 let warDirector;
 let generator;
+let geopoliticalLayer; // Geopolitical Macro-Layer (territories, settlements, roads)
 const chunkCache = new Map(); // "x,z" -> ChunkData
 const players = new Map(); // socketId -> Player Data
 const vehicles = new Map(); // id -> Vehicle
 const physicsHandleMap = new Map(); // handle -> { type, instance }
 const chatSystem = new ChatSystem();
 let lastState = {};
+let geoTickAccumulator = 0; // For slow geopolitical updates
 
 async function initPhysics() {
     await RAPIER.init();
     physicsWorld = new RAPIER.World(serverConfig.gravity);
     console.log('Rapier Physics World Initialized');
-    
+
     physicsSystems = new PhysicsSystems(physicsWorld);
 
     // Infinite World Generator
     generator = new WorldGenerator(worldConfig.seed, worldConfig.chunkSize, worldConfig.seaLevel);
 
-    // Remove Static Physics Floor (using dynamic chunks now)
-    
-    // Init War Director
-    warDirector = new WarDirector(physicsWorld, {}, physicsSystems, generator); // Pass generator
+    // Initialize Geopolitical Macro-Layer
+    // This pre-generates 512km x 512km of faction territories, settlements, and roads
+    console.log('\n[Server] Initializing Geopolitical Macro-Layer...');
+    geopoliticalLayer = new GeopoliticalMacroLayer(generator, worldConfig.seed);
+    await geopoliticalLayer.initialize();
+
+    // Build world data with geopolitical information for WarDirector
+    worldData = {
+        pois: [],
+        geopolitical: geopoliticalLayer
+    };
+
+    // Convert settlements to POIs for WarDirector compatibility
+    if (geopoliticalLayer.territoryManager) {
+        for (const settlement of geopoliticalLayer.territoryManager.settlements.values()) {
+            worldData.pois.push({
+                id: settlement.id,
+                type: settlement.tier === 'CAPITAL' ? 'MILITARY_BASE' : 'SETTLEMENT',
+                tier: settlement.tier,
+                faction: settlement.faction,
+                x: settlement.position.x,
+                y: settlement.position.z, // POI uses x,y for horizontal, z for height
+                z: settlement.position.y
+            });
+        }
+        console.log(`[Server] Registered ${worldData.pois.length} settlements as POIs`);
+    }
+
+    // Init War Director with geopolitical data
+    warDirector = new WarDirector(physicsWorld, worldData, physicsSystems, generator);
 }
 
 // Entity Factory - Handled by Player class now
@@ -88,9 +117,10 @@ io.on('connection', (socket) => {
         players.set(socket.id, player);
 
         // Send initial state (No world data, client requests chunks)
-        socket.emit(NetworkManager.Packet.LOGIN, { 
-            id: socket.id, 
-            state: serializeState()
+        socket.emit(NetworkManager.Packet.LOGIN, {
+            id: socket.id,
+            state: serializeState(),
+            geopolitical: geopoliticalLayer ? geopoliticalLayer.serializeOverview() : null
         });
     }
 
@@ -112,10 +142,18 @@ io.on('connection', (socket) => {
             chunks.forEach(c => {
                 const key = `${c.x},${c.z}`;
                 let chunkData;
-                
+
                 if (!chunkCache.has(key)) {
                     // Generate Logic
                     chunkData = generator.generateChunk(c.x, c.z);
+
+                    // Add geopolitical POIs to chunk
+                    if (geopoliticalLayer && geopoliticalLayer.isInitialized) {
+                        const geoPois = geopoliticalLayer.getPOIsForChunk(
+                            c.x, c.z, worldConfig.chunkSize
+                        );
+                        chunkData.geoPois = geoPois;
+                    }
                     
                     // Generate Physics Collider
                     try {
@@ -372,17 +410,26 @@ function serializeState() {
 function gameLoop() {
     try {
         if (!physicsWorld) return;
-        
+
+        const dt = TICK_DT / 1000;
+
         // Update War Director (AI)
         if (warDirector) {
-            warDirector.updateUnits(TICK_DT / 1000);
+            warDirector.updateUnits(dt);
             // We should call tickSlow occasionally, effectively handled via internal counters or separate interval
             // For simplicity:
-            if (Math.random() < 0.01) warDirector.tickSlow(TICK_DT / 1000);
+            if (Math.random() < 0.01) warDirector.tickSlow(dt);
+        }
+
+        // Update Geopolitical Layer (slow tick - once per second)
+        geoTickAccumulator += dt;
+        if (geoTickAccumulator >= 1.0 && geopoliticalLayer && geopoliticalLayer.isInitialized) {
+            geopoliticalLayer.update(geoTickAccumulator);
+            geoTickAccumulator = 0;
         }
 
         // Update Vehicles
-        vehicles.forEach(v => v.update(TICK_DT / 1000));
+        vehicles.forEach(v => v.update(dt));
 
         // Step Physics
         physicsWorld.step();
