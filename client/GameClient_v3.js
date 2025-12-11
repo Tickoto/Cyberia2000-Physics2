@@ -58,11 +58,30 @@ class GameClient {
         const baseDir = new THREE.Vector3(0, 0, -1);
         this.interactDebugLine = new THREE.ArrowHelper(baseDir, new THREE.Vector3(), this.interactRange, 0xff0000);
         this.interactDebugLine.frustumCulled = false;
-        this.interactDebugLine.line.material.depthTest = false;
-        this.interactDebugLine.line.material.depthWrite = false;
-        this.interactDebugLine.cone.material.depthTest = false;
-        this.interactDebugLine.cone.material.depthWrite = false;
         this.interactDebugLine.renderOrder = 999;
+
+        // Force the interaction ray visual to always render on top and stay bright
+        const lineMaterial = new THREE.LineBasicMaterial({
+            color: 0xff0000,
+            depthTest: false,
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.95,
+            fog: false,
+            toneMapped: false
+        });
+        const coneMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff0000,
+            depthTest: false,
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.95,
+            fog: false,
+            toneMapped: false
+        });
+        this.interactDebugLine.setMaterial(lineMaterial);
+        this.interactDebugLine.cone.material = coneMaterial;
+        this.interactDebugLine.visible = false;
         this.scene.add(this.interactDebugLine);
 
         // Lights
@@ -801,10 +820,17 @@ class GameClient {
             }
 
             if (this.interactDebugLine) {
-                const length = headPos.distanceTo(endPoint);
-                this.interactDebugLine.position.copy(headPos);
-                this.interactDebugLine.setDirection(viewDir.clone().normalize());
-                this.interactDebugLine.setLength(length, 0.25 * length, 0.1 * length);
+                const targetDir = endPoint.clone().sub(headPos);
+                const length = targetDir.length();
+
+                if (length > 0.0001) {
+                    this.interactDebugLine.visible = true;
+                    this.interactDebugLine.position.copy(headPos);
+                    this.interactDebugLine.setDirection(targetDir.normalize());
+                    this.interactDebugLine.setLength(length, 0.25 * length, 0.1 * length);
+                } else {
+                    this.interactDebugLine.visible = false;
+                }
             }
 
             // Rotate Player Mesh to face movement (Fixed 180 flip)
@@ -812,6 +838,8 @@ class GameClient {
                 const angle = Math.atan2(finalMove.x, finalMove.z);
                 myMesh.rotation.y = angle + Math.PI;
             }
+        } else if (this.interactDebugLine) {
+            this.interactDebugLine.visible = false;
         }
 
         this.renderer.render(this.scene, this.camera);
