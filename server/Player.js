@@ -52,7 +52,7 @@ export default class Player {
         if (!input) return;
 
         if (this.mountedVehicle) {
-            this.updateMountedState(input);
+            this.updateMountedState(input, dt);
             return;
         }
 
@@ -139,7 +139,7 @@ export default class Player {
         }
     }
 
-    updateMountedState(input) {
+    updateMountedState(input, dt = 1 / 60) {
         const { vehicleId, seat } = this.mountedVehicle || {};
         const vehicle = this.vehicles?.get(vehicleId);
 
@@ -154,7 +154,7 @@ export default class Player {
         }
 
         if (seat === 0 && vehicle) {
-            vehicle.applyDriverInput(input || {});
+            vehicle.applyDriverInput(input || {}, dt);
         }
 
         const seatPos = vehicle.getSeatWorldPosition(seat);

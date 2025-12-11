@@ -810,9 +810,16 @@ class GameClient {
 
         // Update Camera Position
         if (this.net.myId && this.entities.has(this.net.myId)) {
-            const myMesh = this.entities.get(this.net.myId).mesh;
-            const target = myMesh.position.clone().add(new THREE.Vector3(0, 1.5, 0));
-            
+            const me = this.entities.get(this.net.myId);
+            const myMesh = me.mesh;
+
+            let target = myMesh.position.clone().add(new THREE.Vector3(0, 1.5, 0));
+
+            if (me.mountedVehicle && this.vehicles.has(me.mountedVehicle.vehicleId)) {
+                const vMesh = this.vehicles.get(me.mountedVehicle.vehicleId).mesh;
+                target = vMesh.position.clone().add(new THREE.Vector3(0, 1.5, 0));
+            }
+
             const dist = 5.0;
             const offset = new THREE.Vector3(
                 0, 
@@ -1047,6 +1054,8 @@ class GameClient {
                     entity.outfit = data.outfit;
                     entity.hairStyle = data.hairStyle;
                 }
+
+                entity.mountedVehicle = data.mountedVehicle || null;
 
                 // Hide the player model while they are inside a vehicle
                 if (!data.type && data.mountedVehicle) {
