@@ -1,4 +1,5 @@
 import NetworkManager from '../shared/NetworkManager.js';
+import { gameplayConfig } from '../shared/config.js';
 
 // Access global from UMD bundle
 const { SnapshotInterpolation } = Snap;
@@ -6,9 +7,9 @@ const { SnapshotInterpolation } = Snap;
 export default class NetworkController {
     constructor(socket) {
         this.socket = socket;
-        this.SI = new SnapshotInterpolation(60); // 60 FPS server
+        this.SI = new SnapshotInterpolation(gameplayConfig.interpolationRate);
         this.interpolationBuffer = [];
-        this.bufferSize = 20; // Keep last 20 updates
+        this.bufferSize = gameplayConfig.interpolationBufferSize; // Keep last 20 updates
         this.networkState = {}; // Local complete state
         this.myId = null;
         this.worldData = null; // Store world data here

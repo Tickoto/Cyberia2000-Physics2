@@ -1,5 +1,6 @@
 import { createNoise2D } from 'simplex-noise';
 import { OBJECTS, BIOME_DEFINITIONS } from './Objects.js';
+import { worldConfig } from '../shared/config.js';
 
 // Pseudo-random number generator for deterministic seeding
 function seededRandom(str) {
@@ -16,10 +17,11 @@ function seededRandom(str) {
 }
 
 class WorldGenerator {
-    constructor(seed = 'cyberia-infinite') {
+    constructor(seed = worldConfig.seed, chunkSize = worldConfig.chunkSize, seaLevel = worldConfig.seaLevel) {
         this.seed = seed;
-        this.chunkSize = 32; 
-        this.scale = 1; 
+        this.chunkSize = chunkSize;
+        this.seaLevel = seaLevel;
+        this.scale = 1;
 
         // Noise Layers
         this.noiseElevation = createNoise2D(seededRandom(seed + '_elev'));
@@ -185,7 +187,7 @@ class WorldGenerator {
         }
 
         // Global Water Level
-        if (finalH < -1.0) {
+        if (finalH < this.seaLevel) {
             isWater = true;
         }
 
