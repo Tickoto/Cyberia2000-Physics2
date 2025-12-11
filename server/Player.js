@@ -115,10 +115,32 @@ export default class Player {
         const maxReachMeters = 2.0; // Approximate arm's reach
 
         const hit = this.physicsSystems.raycastInteract(eyePos, dir, maxReachMeters, excludeColliderHandle);
-        
+
+        // Collect debug information for client + server visibility
+        const debugPayload = {
+            origin: eyePos,
+            direction: dir,
+            maxReach: maxReachMeters,
+            hit: null
+        };
+
         if (hit) {
             const entity = this.physicsHandleMap ? this.physicsHandleMap.get(hit.bodyHandle) : null;
-            
+
+            const distance = typeof hit.distance === 'number' ? hit.distance : null;
+
+            debugPayload.hit = {
+                bodyHandle: hit.bodyHandle,
+                colliderHandle: hit.colliderHandle,
+                distance: distance,
+                point: hit.point,
+                mappedEntity: entity ? entity.type : null,
+                mappedId: entity && entity.instance ? entity.instance.id : null
+            };
+
+            const distanceLabel = distance !== null ? `${distance.toFixed(3)}m` : 'unknown distance';
+            console.log(`[Interact] ${this.id} hit body ${hit.bodyHandle} at ${distanceLabel}`, debugPayload.hit);
+
             if (entity && entity.type === 'VEHICLE') {
                 const v = entity.instance;
                 const seats = v.seats.map((s, i) => ({
@@ -126,7 +148,7 @@ export default class Player {
                     name: i === 0 ? 'Driver' : `Passenger ${i}`,
                     occupied: s !== null
                 }));
-                
+
                 this.socket.emit(NetworkManager.Packet.INTERACT_MENU, {
                     type: 'VEHICLE',
                     vehicleType: v.type,
@@ -136,10 +158,14 @@ export default class Player {
                     targetId: v.id
                 });
             } else {
-                // Generic hit (terrain or unknown)
-                // console.log(`Hit unknown handle ${hit.bodyHandle}`);
+                console.log(`[Interact] ${this.id} hit unmapped entity type`, debugPayload.hit);
             }
+        } else {
+            console.log(`[Interact] ${this.id} raycast missed`, debugPayload);
         }
+
+        // Always let the client know what the server raycast observed for debugging
+        this.socket.emit(NetworkManager.Packet.INTERACT_DEBUG, debugPayload);
     }
 
     // --- Inventory System ---
