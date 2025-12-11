@@ -1,76 +1,21 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 
-const VEHICLE_PROFILES = {
-    JEEP: {
-        mass: 750,
-        width: 1.0,
-        length: 2.2,
-        centerOfMassOffset: -0.8,
-        suspension: { restLength: 0.9, spring: 22000, damper: 4200, radius: 0.45 },
-        engineForce: 9500,
-        maxSpeed: 28,
-        steerTorque: 2600,
-        lateralStiffness: 0.55,
-        microSlipImpulse: 1200,
-        linearDamping: 0.18,
-        angularDamping: 0.6,
-        friction: 3.0
-    },
-    TANK: {
-        mass: 7500,
-        width: 1.6,
-        length: 3.5,
-        centerOfMassOffset: -1.0,
-        suspension: { restLength: 0.7, spring: 42000, damper: 7500, radius: 0.55 },
-        engineForce: 14000,
-        maxSpeed: 16,
-        steerTorque: 3200,
-        lateralStiffness: 0.25,
-        microSlipImpulse: 800,
-        linearDamping: 0.35,
-        angularDamping: 1.8,
-        friction: 4.5,
-        neutralTurnTorque: 5200,
-        neutralSpeedThreshold: 1.5
-    },
-    HELICOPTER: {
-        bodySize: { x: 1.5, y: 1.0, z: 3.0 },
-        maxRPM: 2200,
-        idleRPM: 300,
-        spoolRate: 0.9,
-        liftForce: 8200,
-        cyclicForce: 2600,
-        pitchTorque: 950,
-        rollTorque: 950,
-        yawTorque: 720,
-        linearDamping: 0.05,
-        angularDamping: 1.1
-    }
-};
-
 export default class Vehicle {
     constructor(id, type, world, position = { x: 0, y: 2, z: 0 }) {
         this.id = id;
         this.type = type; // JEEP, TANK, HELICOPTER
         this.world = world;
-
+        
         this.bodies = []; // Track bodies to destroy later
-        this.chassisCollider = null;
-
+        this.joints = [];
+        this.wheels = []; // { body, joint, axis }
+        
         this.health = 100;
         this.maxHealth = 100;
         this.seats = [];
 
         const seatCount = type === 'JEEP' ? 4 : (type === 'TANK' ? 2 : 6);
-        for (let i = 0; i < seatCount; i++) this.seats.push(null); // null = empty, string = playerId
-
-        this.profile = VEHICLE_PROFILES[type];
-        this.wheelConfigs = [];
-        this.wheelStates = [];
-        this.trackOffset = 0;
-
-        this.rotorRPM = 0;
-        this.targetRPM = 0;
+        for(let i=0; i<seatCount; i++) this.seats.push(null); // null = empty, string = playerId
 
         this.createVehicle(position);
     }
@@ -83,69 +28,72 @@ export default class Vehicle {
         if (this.type === 'HELICOPTER') {
             const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
                 .setTranslation(position.x, position.y + 5, position.z)
-                .setLinearDamping(this.profile.linearDamping)
-                .setAngularDamping(this.profile.angularDamping);
-
+                .setLinearDamping(0.5)
+                .setAngularDamping(1.0);
+            
             this.chassis = this.world.createRigidBody(bodyDesc);
-            const { x, y, z } = this.profile.bodySize;
-            const collider = RAPIER.ColliderDesc.cuboid(x, y, z)
-                .setTranslation(0, 0, 0);
-            this.chassisCollider = this.world.createCollider(collider, this.chassis);
-            this.bodies.push(this.chassis);
+            const collider = RAPIER.ColliderDesc.cuboid(1.5, 1.0, 3.0);
+        this.world.createCollider(collider, this.chassis);
+        this.bodies.push(this.chassis);
+        return;
+    }
 
-            this.maxRPM = this.profile.maxRPM;
-            this.targetRPM = this.profile.idleRPM;
-            return;
-        }
-
+        // Land Vehicles (Jeep, Tank)
         const isTank = this.type === 'TANK';
-        const width = this.profile.width;
-        const length = this.profile.length;
+        const width = isTank ? 1.5 : 1.0;
+        const length = isTank ? 3.0 : 2.0;
+        const mass = isTank ? 2000 : 500;
 
+        // 1. Chassis
         const chassisDesc = RAPIER.RigidBodyDesc.dynamic()
             .setTranslation(position.x, position.y + 1, position.z)
-            .setAdditionalMass(this.profile.mass)
-            .setLinearDamping(this.profile.linearDamping)
-            .setAngularDamping(this.profile.angularDamping);
+            .setAdditionalMass(mass);
         const chassis = this.world.createRigidBody(chassisDesc);
-        const chassisColl = RAPIER.ColliderDesc.cuboid(width, 0.5, length)
-            .setTranslation(0, this.profile.centerOfMassOffset, 0)
-            .setFriction(this.profile.friction);
-        this.chassisCollider = this.world.createCollider(chassisColl, chassis);
+        const chassisColl = RAPIER.ColliderDesc.cuboid(width, 0.5, length); 
+        this.world.createCollider(chassisColl, chassis);
         this.bodies.push(chassis);
         this.chassis = chassis;
 
-        const wheelRadius = this.profile.suspension.radius;
-        const wheelRest = this.profile.suspension.restLength;
-        const xOff = width + wheelRadius + 0.1;
-        const zOff = length - 0.6;
+        // 2. Wheels
+        const wheelRadius = isTank ? 0.6 : 0.4;
+        const wheelWidth = isTank ? 0.4 : 0.2;
+        const xOff = width + wheelWidth/2 + 0.1;
+        const yOff = -0.3;
+        const zOff = length - 0.5;
 
-        const baseWheels = [
-            { x: -xOff, y: 0, z: zOff },
-            { x: xOff, y: 0, z: zOff },
-            { x: -xOff, y: 0, z: -zOff },
-            { x: xOff, y: 0, z: -zOff }
+        // Front Left, Front Right, Rear Left, Rear Right
+        const wheelPositions = [
+            { x: -xOff, y: yOff, z: zOff },
+            { x: xOff, y: yOff, z: zOff },
+            { x: -xOff, y: yOff, z: -zOff },
+            { x: xOff, y: yOff, z: -zOff }
         ];
 
-        if (isTank) {
-            // Additional middle wheels per side for better track sampling
-            baseWheels.push({ x: -xOff, y: 0, z: 0 });
-            baseWheels.push({ x: xOff, y: 0, z: 0 });
-        }
+        wheelPositions.forEach((pos, index) => {
+            // Wheel Body
+            const wheelDesc = RAPIER.RigidBodyDesc.dynamic()
+                .setTranslation(position.x + pos.x, position.y + pos.y + 1, position.z + pos.z);
+            const wheelBody = this.world.createRigidBody(wheelDesc);
+            
+            // Rotate Cylinder to align with X axis
+            const wheelColl = RAPIER.ColliderDesc.cylinder(wheelWidth/2, wheelRadius)
+                .setRotation({ w: 0.707, x: 0, y: 0, z: 0.707 }) // 90 deg around Z approx
+                .setFriction(isTank ? 3.0 : 2.0); 
+            
+            this.world.createCollider(wheelColl, wheelBody);
+            this.bodies.push(wheelBody);
 
-        this.wheelConfigs = baseWheels.map((pos) => ({
-            position: pos,
-            restLength: wheelRest,
-            spring: this.profile.suspension.spring,
-            damper: this.profile.suspension.damper,
-            radius: wheelRadius
-        }));
-        this.wheelStates = this.wheelConfigs.map(() => ({
-            compression: 0,
-            grounded: false,
-            contactPoint: null,
-            worldPosition: null
-        }));
+            // Joint
+            const jointParams = RAPIER.JointData.revolute(
+                pos, 
+                { x: 0, y: 0, z: 0 },
+                { x: 1, y: 0, z: 0 } // Rotate around X axis
+            );
+            
+            const joint = this.world.createImpulseJoint(jointParams, chassis, wheelBody, true);
+            this.wheels.push({ body: wheelBody, joint, index });
+            this.joints.push(joint);
+        });
     }
 
     getSeatOffsets() {
@@ -188,9 +136,9 @@ export default class Vehicle {
         const qx = r.x, qy = r.y, qz = r.z, qw = r.w;
         const ox = offset.x, oy = offset.y, oz = offset.z;
 
-        const ix = qw * ox + qy * oz - qz * oy;
-        const iy = qw * oy + qz * ox - qx * oz;
-        const iz = qw * oz + qx * oy - qy * ox;
+        const ix =  qw * ox + qy * oz - qz * oy;
+        const iy =  qw * oy + qz * ox - qx * oz;
+        const iz =  qw * oz + qx * oy - qy * ox;
         const iw = -qx * ox - qy * oy - qz * oz;
 
         const rx = ix * qw + iw * -qx + iy * -qz - iz * -qy;
@@ -204,154 +152,62 @@ export default class Vehicle {
         };
     }
 
-    rotateVector(v) {
-        const rot = this.chassis.rotation();
-        const qx = rot.x, qy = rot.y, qz = rot.z, qw = rot.w;
-        const ix = qw * v.x + qy * v.z - qz * v.y;
-        const iy = qw * v.y + qz * v.x - qx * v.z;
-        const iz = qw * v.z + qx * v.y - qy * v.x;
-        const iw = -qx * v.x - qy * v.y - qz * v.z;
-
-        return {
-            x: ix * qw + iw * -qx + iy * -qz - iz * -qy,
-            y: iy * qw + iw * -qy + iz * -qx - ix * -qz,
-            z: iz * qw + iw * -qz + ix * -qy - iy * -qx
-        };
+    update(dt) {
+        // Simple autonomous movement or just idle physics for now
+        // If controlled by player, we'd need input injection.
+        // For now, let's just stabilize them if helicopter
+        
+        if (this.type === 'HELICOPTER') {
+            // Hover logic (Anti-gravity)
+            // Just apply simple upward force to counteract gravity roughly
+            // Mass is computed by Rapier + additional mass? No explicit mass set for heli, assumed from collider density
+            // Default density 1.0. Volume 1.5*1*3 * 8 = 36. Mass ~36. Gravity 9.81. Force ~350
+            
+            // const f = 350.0;
+            // this.chassis.applyImpulse({ x: 0, y: f * dt, z: 0 }, true);
+        }
     }
 
-    getBasis() {
-        return {
-            forward: this.rotateVector({ x: 0, y: 0, z: -1 }),
-            right: this.rotateVector({ x: 1, y: 0, z: 0 }),
-            up: this.rotateVector({ x: 0, y: 1, z: 0 })
-        };
-    }
-
-    localToWorld(vec) {
-        const t = this.chassis.translation();
-        const rotated = this.rotateVector(vec);
-        return { x: t.x + rotated.x, y: t.y + rotated.y, z: t.z + rotated.z };
-    }
-
-    getVelocityAtPoint(point) {
-        const linvel = this.chassis.linvel();
-        const angvel = this.chassis.angvel();
-        const origin = this.chassis.translation();
-
-        const r = {
-            x: point.x - origin.x,
-            y: point.y - origin.y,
-            z: point.z - origin.z
-        };
-
-        return {
-            x: linvel.x + angvel.y * r.z - angvel.z * r.y,
-            y: linvel.y + angvel.z * r.x - angvel.x * r.z,
-            z: linvel.z + angvel.x * r.y - angvel.y * r.x
-        };
-    }
-
-    applyForceAtPoint(force, point, dt) {
-        const impulse = { x: force.x * dt, y: force.y * dt, z: force.z * dt };
-        this.chassis.applyImpulse(impulse, true);
-
-        const origin = this.chassis.translation();
-        const r = {
-            x: point.x - origin.x,
-            y: point.y - origin.y,
-            z: point.z - origin.z
-        };
-        const torque = {
-            x: r.y * force.z - r.z * force.y,
-            y: r.z * force.x - r.x * force.z,
-            z: r.x * force.y - r.y * force.x
-        };
-        const torqueImpulse = { x: torque.x * dt, y: torque.y * dt, z: torque.z * dt };
-        this.chassis.applyTorqueImpulse(torqueImpulse, true);
-    }
-
-    applySuspensionForces(dt) {
-        if (this.type === 'HELICOPTER' || !this.chassis) return;
-
-        const { up } = this.getBasis();
-        const down = { x: -up.x, y: -up.y, z: -up.z };
-
-        this.wheelConfigs.forEach((wheel, index) => {
-            const origin = this.localToWorld(wheel.position);
-            const ray = new RAPIER.Ray(origin, down);
-            const maxDistance = wheel.restLength + wheel.radius + 0.2;
-            const hit = this.world.castRay(ray, maxDistance, true);
-
-            let grounded = false;
-            let compressionRatio = 0;
-            let contactPoint = null;
-            let wheelCenter = this.localToWorld({ ...wheel.position, y: wheel.position.y - wheel.restLength });
-
-            if (hit && hit.colliderHandle !== this.chassisCollider?.handle) {
-                const distance = hit.toi - wheel.radius;
-                const compression = Math.max(0, wheel.restLength - distance);
-                const vel = this.getVelocityAtPoint(origin);
-                const relVel = vel.x * down.x + vel.y * down.y + vel.z * down.z;
-
-                const springForce = wheel.spring * compression;
-                const damperForce = wheel.damper * relVel;
-                const totalForce = springForce + damperForce;
-
-                const force = { x: up.x * totalForce, y: up.y * totalForce, z: up.z * totalForce };
-                const hitPoint = {
-                    x: origin.x + down.x * hit.toi,
-                    y: origin.y + down.y * hit.toi,
-                    z: origin.z + down.z * hit.toi,
-                };
-                this.applyForceAtPoint(force, hitPoint, dt);
-
-                grounded = true;
-                compressionRatio = Math.min(1, compression / wheel.restLength);
-                contactPoint = hitPoint;
-                wheelCenter = {
-                    x: origin.x + down.x * Math.max(hit.toi - wheel.radius, wheel.restLength),
-                    y: origin.y + down.y * Math.max(hit.toi - wheel.radius, wheel.restLength),
-                    z: origin.z + down.z * Math.max(hit.toi - wheel.radius, wheel.restLength)
-                };
-            }
-
-            this.wheelStates[index] = {
-                compression: compressionRatio,
-                grounded,
-                contactPoint,
-                worldPosition: wheelCenter
-            };
-        });
-    }
-
-    applyGroundInput(input = {}, dt = 1 / 60) {
+    applyDriverInput(input = {}, dt = 1 / 60) {
         if (!this.chassis) return;
-        this.applySuspensionForces(dt);
 
-        const { forward, right } = this.getBasis();
+        // Vehicle-specific tuning
+        const engineForce = this.type === 'TANK' ? 11000 : 7500;
+        const maxSpeed = this.type === 'TANK' ? 18 : 26;
+        const steerTorque = this.type === 'TANK' ? 2200 : 1600;
+        const lateralStiffness = this.type === 'TANK' ? 0.35 : 0.5;
+
         const forwardInput = input.y || 0;
         const steerInput = input.x || 0;
-        const mass = this.chassis.mass();
+
+        const rot = this.chassis.rotation();
+        const rotateVector = (v) => {
+            const qx = rot.x, qy = rot.y, qz = rot.z, qw = rot.w;
+            const ix =  qw * v.x + qy * v.z - qz * v.y;
+            const iy =  qw * v.y + qz * v.x - qx * v.z;
+            const iz =  qw * v.z + qx * v.y - qy * v.x;
+            const iw = -qx * v.x - qy * v.y - qz * v.z;
+
+            return {
+                x: ix * qw + iw * -qx + iy * -qz - iz * -qy,
+                y: iy * qw + iw * -qy + iz * -qx - ix * -qz,
+                z: iz * qw + iw * -qz + ix * -qy - iy * -qx
+            };
+        };
+
+        const forward = rotateVector({ x: 0, y: 0, z: -1 });
+        const right = rotateVector({ x: 1, y: 0, z: 0 });
+
         const velocity = this.chassis.linvel();
         const forwardSpeed = velocity.x * forward.x + velocity.y * forward.y + velocity.z * forward.z;
         const rightSpeed = velocity.x * right.x + velocity.y * right.y + velocity.z * right.z;
 
-        const groundedWheels = this.wheelStates.filter(w => w.grounded).length || this.wheelStates.length;
-        const driveForce = this.profile.engineForce * forwardInput;
-        const perWheel = driveForce / groundedWheels;
+        const mass = this.chassis.mass();
+        const targetSpeed = maxSpeed * forwardInput;
+        const speedError = targetSpeed - forwardSpeed;
+        const accelImpulse = Math.max(-engineForce, Math.min(engineForce, speedError * mass)) * dt;
 
-        this.wheelStates.forEach((wheel) => {
-            const applicationPoint = wheel.contactPoint || wheel.worldPosition || this.chassis.translation();
-            const force = {
-                x: forward.x * perWheel,
-                y: forward.y * perWheel,
-                z: forward.z * perWheel
-            };
-            this.applyForceAtPoint(force, applicationPoint, dt);
-        });
-
-        const speedError = (this.profile.maxSpeed * forwardInput) - forwardSpeed;
-        const accelImpulse = Math.max(-this.profile.engineForce, Math.min(this.profile.engineForce, speedError * mass)) * dt;
+        // Apply acceleration/braking along the chassis forward vector
         const throttleImpulse = {
             x: forward.x * accelImpulse,
             y: forward.y * accelImpulse,
@@ -359,95 +215,25 @@ export default class Vehicle {
         };
         this.chassis.applyImpulse(throttleImpulse, true);
 
-        const lateralImpulseMag = -rightSpeed * mass * this.profile.lateralStiffness;
-        const limited = Math.max(-this.profile.microSlipImpulse, Math.min(this.profile.microSlipImpulse, lateralImpulseMag));
+        // Stabilize sideways slip to keep the vehicle planted
+        const lateralImpulseMag = -rightSpeed * mass * lateralStiffness;
         const lateralImpulse = {
-            x: right.x * limited * dt,
-            y: right.y * limited * dt,
-            z: right.z * limited * dt
+            x: right.x * lateralImpulseMag * dt,
+            y: right.y * lateralImpulseMag * dt,
+            z: right.z * lateralImpulseMag * dt
         };
         this.chassis.applyImpulse(lateralImpulse, true);
 
-        if (this.type === 'TANK') {
-            if (Math.abs(forwardSpeed) < this.profile.neutralSpeedThreshold && Math.abs(steerInput) > 0.05) {
-                const torque = steerInput * this.profile.neutralTurnTorque * dt;
-                this.chassis.applyTorqueImpulse({ x: 0, y: torque, z: 0 }, true);
-            } else {
-                const steerTorque = steerInput * this.profile.steerTorque * dt;
-                this.chassis.applyTorqueImpulse({ x: 0, y: steerTorque, z: 0 }, true);
-            }
-        } else {
-            const steerTorque = steerInput * this.profile.steerTorque * dt;
-            this.chassis.applyTorqueImpulse({ x: 0, y: steerTorque, z: 0 }, true);
-        }
+        // Steering via torque instead of hard rotation snapping
+        const angularVel = this.chassis.angvel();
+        const targetYawRate = steerInput * steerTorque;
+        const yawRateError = targetYawRate - angularVel.y;
+        const steerImpulse = { x: 0, y: yawRateError * dt, z: 0 };
+        this.chassis.applyTorqueImpulse(steerImpulse, true);
 
-        this.trackOffset += forwardSpeed * dt;
-    }
-
-    applyHelicopterInput(input = {}, dt = 1 / 60) {
-        if (!this.chassis) return;
-
-        const engineUp = input.engineUp || input.jump;
-        const engineDown = input.engineDown || input.sprint;
-
-        if (engineUp) this.targetRPM = this.profile.maxRPM;
-        else if (engineDown) this.targetRPM = this.profile.idleRPM;
-
-        this.updateRotor(dt);
-
-        const { forward, right, up } = this.getBasis();
-        const rpmRatio = this.rotorRPM / this.profile.maxRPM;
-
-        if (rpmRatio > 0.6) {
-            const lift = this.profile.liftForce * rpmRatio * rpmRatio;
-            const liftForce = { x: up.x * lift, y: up.y * lift, z: up.z * lift };
-            this.applyForceAtPoint(liftForce, this.chassis.translation(), dt);
-
-            const pitch = input.pitch || 0;
-            const roll = input.roll || 0;
-            const yaw = input.yaw || 0;
-
-            const cyclic = this.profile.cyclicForce * rpmRatio;
-            const forwardForce = { x: forward.x * cyclic * pitch, y: forward.y * cyclic * pitch, z: forward.z * cyclic * pitch };
-            const strafeForce = { x: right.x * cyclic * -roll, y: right.y * cyclic * -roll, z: right.z * cyclic * -roll };
-            this.applyForceAtPoint(forwardForce, this.chassis.translation(), dt);
-            this.applyForceAtPoint(strafeForce, this.chassis.translation(), dt);
-
-            const pitchTorque = this.profile.pitchTorque * pitch * dt;
-            const rollTorque = this.profile.rollTorque * roll * dt;
-            const yawTorque = this.profile.yawTorque * yaw * dt;
-
-            this.chassis.applyTorqueImpulse({ x: right.x * pitchTorque, y: right.y * pitchTorque, z: right.z * pitchTorque }, true);
-            this.chassis.applyTorqueImpulse({ x: forward.x * rollTorque, y: forward.y * rollTorque, z: forward.z * rollTorque }, true);
-            this.chassis.applyTorqueImpulse({ x: up.x * yawTorque, y: up.y * yawTorque, z: up.z * yawTorque }, true);
-        }
-    }
-
-    updateRotor(dt) {
-        const current = this.rotorRPM;
-        const target = this.targetRPM || this.profile.idleRPM;
-        const lerpFactor = Math.min(1, this.profile.spoolRate * dt);
-        this.rotorRPM = current + (target - current) * lerpFactor;
-    }
-
-    update(dt) {
-        if (this.type === 'HELICOPTER') {
-            this.updateRotor(dt);
-            return;
-        }
-
-        this.applySuspensionForces(dt);
-    }
-
-    applyDriverInput(input = {}, dt = 1 / 60) {
-        if (!this.chassis) return;
-
-        if (this.type === 'HELICOPTER') {
-            this.applyHelicopterInput(input, dt);
-            return;
-        }
-
-        this.applyGroundInput(input, dt);
+        // Mild damping keeps the vehicle controllable and prevents runaway speeds
+        this.chassis.setLinearDamping(0.12);
+        this.chassis.setAngularDamping(0.4);
     }
 
     toJSON() {
@@ -457,11 +243,7 @@ export default class Vehicle {
             id: this.id,
             type: this.type,
             x: t.x, y: t.y, z: t.z,
-            qx: r.x, qy: r.y, qz: r.z, qw: r.w,
-            wheels: this.wheelStates.map(w => w.worldPosition ? { x: w.worldPosition.x, y: w.worldPosition.y, z: w.worldPosition.z } : null),
-            trackOffset: this.trackOffset,
-            rotorRPM: this.rotorRPM,
-            maxRPM: this.profile?.maxRPM || 0
+            qx: r.x, qy: r.y, qz: r.z, qw: r.w
         };
     }
 }
