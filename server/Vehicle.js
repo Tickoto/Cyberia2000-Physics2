@@ -9,6 +9,9 @@ export default class Vehicle {
         this.bodies = []; // Track bodies to destroy later
         this.joints = [];
         this.wheels = []; // { body, joint, axis }
+
+        this.rotorRpm = 0;
+        this.maxRotorRpm = 1.0;
         
         this.health = 100;
         this.maxHealth = 100;
@@ -28,15 +31,22 @@ export default class Vehicle {
         if (this.type === 'HELICOPTER') {
             const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
                 .setTranslation(position.x, position.y + 5, position.z)
-                .setLinearDamping(0.5)
-                .setAngularDamping(1.0);
-            
+                .setLinearDamping(0.6)
+                .setAngularDamping(1.4);
+
             this.chassis = this.world.createRigidBody(bodyDesc);
-            const collider = RAPIER.ColliderDesc.cuboid(1.5, 1.0, 3.0);
-        this.world.createCollider(collider, this.chassis);
-        this.bodies.push(this.chassis);
-        return;
-    }
+            const mainBody = RAPIER.ColliderDesc.cuboid(1.5, 1.0, 3.0).setDensity(0.75);
+            const bellyWeight = RAPIER.ColliderDesc.cuboid(1.0, 0.2, 2.5)
+                .setTranslation(0, -0.8, 0)
+                .setDensity(2.0);
+            const tail = RAPIER.ColliderDesc.cuboid(0.4, 0.4, 3.0)
+                .setTranslation(0, 0.1, -3.5)
+                .setDensity(0.5);
+
+            [mainBody, bellyWeight, tail].forEach((collider) => this.world.createCollider(collider, this.chassis));
+            this.bodies.push(this.chassis);
+            return;
+        }
 
         // Land Vehicles (Jeep, Tank)
         const isTank = this.type === 'TANK';
@@ -49,8 +59,15 @@ export default class Vehicle {
             .setTranslation(position.x, position.y + 1, position.z)
             .setAdditionalMass(mass);
         const chassis = this.world.createRigidBody(chassisDesc);
-        const chassisColl = RAPIER.ColliderDesc.cuboid(width, 0.5, length); 
+        const chassisColl = RAPIER.ColliderDesc.cuboid(width, 0.5, length)
+            .setTranslation(0, -0.2, 0)
+            .setDensity(1.2);
+        const ballast = RAPIER.ColliderDesc.cylinder(0.2, 0.5)
+            .setTranslation(0, -0.8, 0)
+            .setRotation({ w: 1, x: 0, y: 0, z: 0 })
+            .setDensity(3.0);
         this.world.createCollider(chassisColl, chassis);
+        this.world.createCollider(ballast, chassis);
         this.bodies.push(chassis);
         this.chassis = chassis;
 
@@ -171,15 +188,6 @@ export default class Vehicle {
     applyDriverInput(input = {}, dt = 1 / 60) {
         if (!this.chassis) return;
 
-        // Vehicle-specific tuning
-        const engineForce = this.type === 'TANK' ? 11000 : 7500;
-        const maxSpeed = this.type === 'TANK' ? 18 : 26;
-        const steerTorque = this.type === 'TANK' ? 2200 : 1600;
-        const lateralStiffness = this.type === 'TANK' ? 0.35 : 0.5;
-
-        const forwardInput = input.y || 0;
-        const steerInput = input.x || 0;
-
         const rot = this.chassis.rotation();
         const rotateVector = (v) => {
             const qx = rot.x, qy = rot.y, qz = rot.z, qw = rot.w;
@@ -194,6 +202,58 @@ export default class Vehicle {
                 z: iz * qw + iw * -qz + ix * -qy - iy * -qx
             };
         };
+
+        if (this.type === 'HELICOPTER') {
+            const throttle = (input.throttleUp ? 1 : 0) - (input.throttleDown ? 1 : 0);
+            const yawInput = (input.yawRight ? 1 : 0) - (input.yawLeft ? 1 : 0);
+            const pitchInput = -(input.y || 0);
+            const rollInput = input.x || 0;
+
+            this.rotorRpm = Math.min(this.maxRotorRpm, Math.max(0, this.rotorRpm + throttle * 0.9 * dt));
+
+            const mass = this.chassis.mass();
+            const liftForce = mass * 9.81 * (0.8 + this.rotorRpm * 0.8);
+            this.chassis.applyImpulse({ x: 0, y: liftForce * dt, z: 0 }, true);
+
+            const forward = rotateVector({ x: 0, y: 0, z: -1 });
+            const right = rotateVector({ x: 1, y: 0, z: 0 });
+
+            const forwardThrust = pitchInput * this.rotorRpm * mass * 20 * dt;
+            const rightThrust = rollInput * this.rotorRpm * mass * 20 * dt;
+
+            this.chassis.applyImpulse({
+                x: forward.x * forwardThrust + right.x * rightThrust,
+                y: forward.y * forwardThrust + right.y * rightThrust,
+                z: forward.z * forwardThrust + right.z * rightThrust
+            }, true);
+
+            const torqueScale = mass * 0.6 * dt;
+            this.chassis.applyTorqueImpulse({
+                x: rollInput * torqueScale,
+                y: yawInput * torqueScale * 2.0,
+                z: pitchInput * torqueScale
+            }, true);
+
+            // Simple stabilization to keep the helicopter from tumbling while still allowing flips
+            this.chassis.applyTorqueImpulse({
+                x: -rot.x * 0.4,
+                y: -rot.y * 0.1,
+                z: -rot.z * 0.4
+            }, true);
+
+            this.chassis.setLinearDamping(0.35);
+            this.chassis.setAngularDamping(1.1);
+            return;
+        }
+
+        // Vehicle-specific tuning
+        const engineForce = this.type === 'TANK' ? 11000 : 7500;
+        const maxSpeed = this.type === 'TANK' ? 18 : 26;
+        const steerTorque = this.type === 'TANK' ? 2200 : 1600;
+        const lateralStiffness = this.type === 'TANK' ? 0.35 : 0.5;
+
+        const forwardInput = input.y || 0;
+        const steerInput = input.x || 0;
 
         const forward = rotateVector({ x: 0, y: 0, z: -1 });
         const right = rotateVector({ x: 1, y: 0, z: 0 });
@@ -226,14 +286,22 @@ export default class Vehicle {
 
         // Steering via torque instead of hard rotation snapping
         const angularVel = this.chassis.angvel();
-        const targetYawRate = steerInput * steerTorque;
+        const spinAssist = this.type === 'TANK' ? 2.5 : 1.0;
+        const targetYawRate = steerInput * steerTorque * spinAssist;
         const yawRateError = targetYawRate - angularVel.y;
         const steerImpulse = { x: 0, y: yawRateError * dt, z: 0 };
         this.chassis.applyTorqueImpulse(steerImpulse, true);
 
         // Mild damping keeps the vehicle controllable and prevents runaway speeds
-        this.chassis.setLinearDamping(0.12);
-        this.chassis.setAngularDamping(0.4);
+        this.chassis.setLinearDamping(0.16);
+        this.chassis.setAngularDamping(0.55);
+
+        // Keep the chassis mostly upright without removing the possibility of flipping
+        this.chassis.applyTorqueImpulse({
+            x: -rot.x * 0.35,
+            y: 0,
+            z: -rot.z * 0.35
+        }, true);
     }
 
     toJSON() {
