@@ -6,7 +6,8 @@ export default class NetworkManager {
         CHAT: 'chat',
         CHUNK_REQUEST: 'chunk_request',
         CHUNK_DATA: 'chunk_data',
-        INTERACT_MENU: 'interact_menu'
+        INTERACT_MENU: 'interact_menu',
+        INTERACT_DEBUG: 'interact_debug'
     };
 
     /**
