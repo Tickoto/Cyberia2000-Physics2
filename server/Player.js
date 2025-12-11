@@ -91,11 +91,12 @@ export default class Player {
 
         // Interaction
         if (input.interact) {
-            this.handleInteraction(input.viewDir);
+            // Pass the player's collider handle so the raycast ignores the player capsule
+            this.handleInteraction(input.viewDir, this.collider.handle);
         }
     }
 
-    handleInteraction(viewDir = { x: 0, y: 0, z: -1 }) {
+    handleInteraction(viewDir = { x: 0, y: 0, z: -1 }, excludeColliderHandle = null) {
         const origin = this.rigidBody.translation();
         // Start at the player's head position and follow the camera's angle.
         const eyePos = {
@@ -113,7 +114,7 @@ export default class Player {
 
         const maxReachMeters = 2.0; // Approximate arm's reach
 
-        const hit = this.physicsSystems.raycastInteract(eyePos, dir, maxReachMeters, this.rigidBody.handle);
+        const hit = this.physicsSystems.raycastInteract(eyePos, dir, maxReachMeters, excludeColliderHandle);
         
         if (hit) {
             const entity = this.physicsHandleMap ? this.physicsHandleMap.get(hit.bodyHandle) : null;
