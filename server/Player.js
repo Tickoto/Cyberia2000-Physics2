@@ -48,7 +48,7 @@ export default class Player {
     }
 
     update(dt, input) {
-        // Input: { x, y, viewDir: {x, y, z}, jump: bool, interact: bool }
+        // Input: { move: {x, y}, drive: {x, y}, viewDir: {x, y, z}, jump: bool, interact: bool }
         if (!input) return;
 
         if (this.mountedVehicle) {
@@ -73,10 +73,12 @@ export default class Player {
             this.verticalVelocity += gravity * dt;
         }
         
-        let movement = { 
-            x: (input.x || 0) * speed * dt, 
-            y: this.verticalVelocity * dt, 
-            z: (input.y || 0) * speed * dt 
+        const moveX = (input.move?.x ?? input.x ?? 0);
+        const moveY = (input.move?.y ?? input.y ?? 0);
+        let movement = {
+            x: moveX * speed * dt,
+            y: this.verticalVelocity * dt,
+            z: moveY * speed * dt
         };
         
         this.characterController.computeColliderMovement(

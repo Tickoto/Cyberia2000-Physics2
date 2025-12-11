@@ -22,7 +22,10 @@ class GameClient {
             moveDir: { x: 0, y: 0 },
             viewDir: { x: 0, y: 0, z: -1 },
             jump: false,
-            interact: false
+            interact: false,
+            rpmUp: false,
+            rpmDown: false,
+            yaw: 0
         };
 
         this.interactRange = 2.0;
@@ -39,6 +42,8 @@ class GameClient {
         this.hairStyle = "DEFAULT";
         this.currentBiome = "SCANNING...";
 
+        this.heliUI = null;
+
         this.init();
     }
 
@@ -54,6 +59,8 @@ class GameClient {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
         document.body.appendChild(this.renderer.domElement);
+
+        this.createHelicopterUI();
 
         const baseDir = new THREE.Vector3(0, 0, -1);
         this.interactDebugLine = new THREE.ArrowHelper(baseDir, new THREE.Vector3(), this.interactRange, 0xff0000);
@@ -552,6 +559,61 @@ class GameClient {
         });
     }
 
+    createHelicopterUI() {
+        const container = document.createElement('div');
+        container.id = 'helicopter-ui';
+        container.style.cssText = `
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 280px;
+            padding: 12px;
+            background: rgba(0,0,0,0.6);
+            border: 1px solid #0f0;
+            font-family: 'VT323', monospace;
+            color: #0f0;
+            display: none;
+        `;
+
+        const label = document.createElement('div');
+        label.textContent = 'HELICOPTER RPM';
+        label.style.textAlign = 'center';
+        label.style.marginBottom = '6px';
+        container.appendChild(label);
+
+        const barWrapper = document.createElement('div');
+        barWrapper.style.cssText = 'width: 100%; height: 16px; background: #220000; border: 1px solid #0f0;';
+        const barFill = document.createElement('div');
+        barFill.style.cssText = 'height: 100%; width: 0%; background: #ff0000; transition: width 0.1s linear, background 0.1s linear;';
+        barWrapper.appendChild(barFill);
+        container.appendChild(barWrapper);
+
+        document.body.appendChild(container);
+        this.heliUI = { container, barFill };
+    }
+
+    updateHelicopterUI(rpmRatio) {
+        if (!this.heliUI) return;
+        const { container, barFill } = this.heliUI;
+        if (rpmRatio === null || rpmRatio === undefined) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+        const clamped = Math.max(0, Math.min(1, rpmRatio));
+        barFill.style.width = `${(clamped * 100).toFixed(1)}%`;
+
+        if (clamped < 0.6) {
+            barFill.style.background = '#ff0000';
+        } else if (clamped < 0.8) {
+            barFill.style.background = '#e1e100';
+        } else {
+            barFill.style.background = '#00ff66';
+        }
+    }
+
     setupInput() {
         const onKey = (e, down) => {
             if (document.activeElement === document.getElementById('chat-input')) return;
@@ -560,7 +622,11 @@ class GameClient {
                 case 'KeyS': this.input.moveDir.y = down ? 1 : 0; break;
                 case 'KeyA': this.input.moveDir.x = down ? -1 : 0; break;
                 case 'KeyD': this.input.moveDir.x = down ? 1 : 0; break;
-                case 'Space': this.input.jump = down; break;
+                case 'Space': this.input.jump = down; this.input.rpmUp = down; break;
+                case 'ShiftLeft':
+                case 'ShiftRight': this.input.rpmDown = down; break;
+                case 'KeyZ': this.input.yaw = down ? -1 : 0; break;
+                case 'KeyC': this.input.yaw = down ? 1 : 0; break;
                 case 'KeyE': if (down) this.input.interact = true; break;
             }
         };
@@ -625,50 +691,109 @@ class GameClient {
     
     renderVehicle(type) {
         const group = new THREE.Group();
-        
+
         if (type === 'JEEP') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 3), new THREE.MeshStandardMaterial({ color: 0x335533 }));
-            body.position.y = 0; // Centered
-            group.add(body);
-            // Wheels
-            const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3);
-            wheelGeo.rotateZ(Math.PI/2);
-            const wMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-            
-            const positions = [
-                [-0.9, -0.4, 1], [0.9, -0.4, 1],
-                [-0.9, -0.4, -1], [0.9, -0.4, -1]
+            const chassis = new THREE.Group();
+            const baseMat = new THREE.MeshStandardMaterial({ color: 0x3a5f3a, metalness: 0.2, roughness: 0.6 });
+            const panelMat = new THREE.MeshStandardMaterial({ color: 0x2d4b2d, metalness: 0.1, roughness: 0.8 });
+
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 3.2), baseMat);
+            frame.position.y = -0.1;
+            chassis.add(frame);
+
+            const hood = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.0), panelMat);
+            hood.position.set(0, 0.35, 1.0);
+            chassis.add(hood);
+
+            const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.9, 1.2), panelMat);
+            cabin.position.set(0, 0.45, -0.2);
+            chassis.add(cabin);
+
+            const rollbar = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.05, 8, 12, Math.PI), baseMat);
+            rollbar.rotation.z = Math.PI;
+            rollbar.position.set(0, 0.9, -0.3);
+            chassis.add(rollbar);
+
+            group.add(chassis);
+
+            const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.35, 16, 1, true);
+            wheelGeo.rotateZ(Math.PI / 2);
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x0f0f0f, metalness: 0.1, roughness: 0.9 });
+            const wheelOffsets = [
+                new THREE.Vector3(-1.0, -0.35, 1.2),
+                new THREE.Vector3(1.0, -0.35, 1.2),
+                new THREE.Vector3(-1.0, -0.35, -1.2),
+                new THREE.Vector3(1.0, -0.35, -1.2),
             ];
-            positions.forEach(p => {
-                const w = new THREE.Mesh(wheelGeo, wMat);
-                w.position.set(...p);
-                group.add(w);
+            group.userData.wheels = [];
+            group.userData.wheelOffsets = wheelOffsets;
+            wheelOffsets.forEach((offset, idx) => {
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                wheel.position.copy(offset);
+                wheel.castShadow = true;
+                wheel.receiveShadow = true;
+                group.add(wheel);
+                group.userData.wheels[idx] = wheel;
             });
         } else if (type === 'TANK') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.0, 4.5), new THREE.MeshStandardMaterial({ color: 0x222222 }));
-            body.position.y = 0;
-            group.add(body);
-            const turret = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.8, 2.0), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+            const body = new THREE.Group();
+            const hullMat = new THREE.MeshStandardMaterial({ color: 0x202020, metalness: 0.3, roughness: 0.7 });
+            const topMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2b, metalness: 0.35, roughness: 0.6 });
+
+            const hull = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.0, 4.8), hullMat);
+            hull.position.y = -0.1;
+            body.add(hull);
+
+            const turret = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 0.8, 10), topMat);
             turret.position.y = 0.9;
-            group.add(turret);
-            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-            barrel.rotation.x = Math.PI/2;
-            barrel.position.set(0, 0.9, 2.5);
-            group.add(barrel);
-        } else if (type === 'HELICOPTER') {
-            const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 4.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
-            body.position.y = 0;
+            body.add(turret);
+
+            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 3.4, 8), topMat);
+            barrel.rotation.z = Math.PI / 2;
+            barrel.position.set(0, 0.9, 2.4);
+            body.add(barrel);
+
+            const trackMat = new THREE.MeshStandardMaterial({ color: 0x141414, metalness: 0.15, roughness: 0.9 });
+            const trackGeo = new THREE.BoxGeometry(0.4, 0.5, 4.8);
+            const leftTrack = new THREE.Mesh(trackGeo, trackMat);
+            leftTrack.position.set(-1.4, -0.55, 0);
+            const rightTrack = new THREE.Mesh(trackGeo, trackMat);
+            rightTrack.position.set(1.4, -0.55, 0);
+            body.add(leftTrack);
+            body.add(rightTrack);
+            body.userData.tracks = [leftTrack, rightTrack];
+
             group.add(body);
-            const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 3.0), new THREE.MeshStandardMaterial({ color: 0x224466 }));
-            tail.position.set(0, 0.2, -3.5);
-            group.add(tail);
-            // Rotor
-            const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 7.0), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-            rotor.position.y = 1.0;
-            rotor.name = 'rotor'; // Tag for animation
-            group.add(rotor);
+            group.userData.tracks = body.userData.tracks;
+        } else if (type === 'HELICOPTER') {
+            const body = new THREE.Group();
+            const hullMat = new THREE.MeshStandardMaterial({ color: 0x1f3b5c, metalness: 0.25, roughness: 0.7 });
+            const noseMat = new THREE.MeshStandardMaterial({ color: 0x2b4a73, metalness: 0.3, roughness: 0.6 });
+
+            const hull = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 3.5), hullMat);
+            body.add(hull);
+
+            const nose = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.2, 8), noseMat);
+            nose.rotation.x = Math.PI / 2;
+            nose.position.set(0, 0, 2.25);
+            body.add(nose);
+
+            const tail = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 3.2), hullMat);
+            tail.position.set(0, 0.1, -3.2);
+            body.add(tail);
+
+            const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.8), noseMat);
+            tailFin.position.set(0, 0.8, -4.2);
+            body.add(tailFin);
+
+            const rotor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 7.2), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+            rotor.position.y = 1.2;
+            rotor.name = 'rotor';
+            body.add(rotor);
+
+            group.add(body);
         }
-        
+
         return group;
     }
 
@@ -704,10 +829,34 @@ class GameClient {
             
             mesh.position.set(data.x, data.y, data.z);
             mesh.quaternion.set(data.qx, data.qy, data.qz, data.qw);
-            
+
             if (data.type === 'HELICOPTER') {
                 const rotor = mesh.getObjectByName('rotor');
-                if (rotor) rotor.rotation.y += 0.5; // Spin
+                if (rotor) rotor.rotation.y += 0.5;
+                entity.rpm = data.rpm;
+                entity.maxRpm = data.maxRpm;
+            }
+
+            if (data.type === 'JEEP' && Array.isArray(data.wheels) && mesh.userData?.wheels) {
+                data.wheels.forEach((wState, idx) => {
+                    const wheelMesh = mesh.userData.wheels[idx];
+                    const defaultPos = mesh.userData.wheelOffsets?.[idx];
+                    if (!wheelMesh) return;
+
+                    if (wState && wState.contact) {
+                        const worldPos = new THREE.Vector3(wState.contact.x, wState.contact.y + 0.25, wState.contact.z);
+                        const local = wheelMesh.parent.worldToLocal(worldPos);
+                        wheelMesh.position.copy(local);
+                    } else if (defaultPos) {
+                        wheelMesh.position.copy(defaultPos);
+                    }
+                });
+            }
+
+            if (data.type === 'TANK' && mesh.userData?.tracks) {
+                mesh.userData.tracks.forEach((t, i) => {
+                    t.rotation.x = (data.trackOffset || 0) * (i % 2 === 0 ? 1 : -1);
+                });
             }
         }
     }
@@ -781,6 +930,23 @@ class GameClient {
             this.updateVehicles(snapshot.state);
         }
 
+        // Helicopter UI follow current vehicle
+        if (this.net.myId && this.entities.has(this.net.myId)) {
+            const me = this.entities.get(this.net.myId);
+            const mount = me?.mountedVehicle;
+            if (mount && this.vehicles.has(mount.vehicleId)) {
+                const veh = this.vehicles.get(mount.vehicleId);
+                if (veh.type === 'HELICOPTER') {
+                    const ratio = veh.maxRpm ? (veh.rpm || 0) / veh.maxRpm : null;
+                    this.updateHelicopterUI(ratio);
+                } else {
+                    this.updateHelicopterUI(null);
+                }
+            } else {
+                this.updateHelicopterUI(null);
+            }
+        }
+
         // 3. Third Person Camera Logic
         const camDir = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraRotation.y);
         const camRight = new THREE.Vector3(-camDir.z, 0, camDir.x);
@@ -797,8 +963,13 @@ class GameClient {
         finalMove.addScaledVector(camRight, this.input.moveDir.x);
 
         this.net.sendInput({
-            x: finalMove.x,
-            y: finalMove.z,
+            move: { x: finalMove.x, y: finalMove.z },
+            drive: { x: this.input.moveDir.x, y: this.input.moveDir.y },
+            pitch: -this.input.moveDir.y,
+            roll: this.input.moveDir.x,
+            yaw: this.input.yaw,
+            rpmUp: this.input.rpmUp,
+            rpmDown: this.input.rpmDown,
             viewDir: { x: viewDir.x, y: viewDir.y, z: viewDir.z },
             jump: this.input.jump,
             interact: this.input.interact
