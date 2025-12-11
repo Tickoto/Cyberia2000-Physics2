@@ -153,7 +153,9 @@ export default class Player {
         };
 
         if (hit) {
-            const entity = this.physicsHandleMap ? this.physicsHandleMap.get(hit.bodyHandle) : null;
+            const entity = this.physicsHandleMap
+                ? (this.physicsHandleMap.get(hit.bodyHandle) || this.physicsHandleMap.get(hit.colliderHandle))
+                : null;
 
             const distance = typeof hit.distance === 'number' ? hit.distance : null;
 

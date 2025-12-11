@@ -216,13 +216,24 @@ io.on('connection', (socket) => {
                     vehicles.set(vId, v);
                     
                     // Register ALL vehicle parts (Chassis + Wheels) for interaction
+                    const registerVehicleBody = (body) => {
+                        if (!body) return;
+                        physicsHandleMap.set(body.handle, { type: 'VEHICLE', instance: v });
+
+                        // Also register each collider handle in case raycasts report collider handles
+                        // instead of body handles (Rapier can return either depending on API).
+                        const colliderCount = body.numColliders ? body.numColliders() : 0;
+                        for (let i = 0; i < colliderCount; i++) {
+                            const colliderHandle = body.collider(i);
+                            physicsHandleMap.set(colliderHandle, { type: 'VEHICLE', instance: v });
+                        }
+                    };
+
                     if (v.bodies) {
-                        v.bodies.forEach(b => {
-                            physicsHandleMap.set(b.handle, { type: 'VEHICLE', instance: v });
-                        });
+                        v.bodies.forEach(registerVehicleBody);
                     } else {
                         // Fallback
-                        physicsHandleMap.set(v.chassisHandle, { type: 'VEHICLE', instance: v });
+                        registerVehicleBody(v.chassis);
                     }
                     
                     // Feedback
