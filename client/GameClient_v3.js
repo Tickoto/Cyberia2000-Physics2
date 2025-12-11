@@ -24,6 +24,10 @@ class GameClient {
             jump: false,
             interact: false
         };
+
+        this.interactRange = 2.0;
+        this.interactRaycaster = new THREE.Raycaster();
+        this.interactDebugLine = null;
         
         this.cameraRotation = { x: 0, y: 0 }; // Pitch, Yaw
         this.isLocked = false;
@@ -50,6 +54,15 @@ class GameClient {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
         document.body.appendChild(this.renderer.domElement);
+
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(),
+            new THREE.Vector3()
+        ]);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xff0000 });
+        this.interactDebugLine = new THREE.Line(lineGeo, lineMat);
+        this.interactDebugLine.frustumCulled = false;
+        this.scene.add(this.interactDebugLine);
 
         // Lights
         const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
@@ -756,7 +769,31 @@ class GameClient {
             
             this.camera.position.copy(target).add(offset);
             this.camera.lookAt(target);
-            
+
+            const headPos = myMesh.position.clone().add(new THREE.Vector3(0, 1.6, 0));
+            const isPlayerObject = (obj) => {
+                let current = obj;
+                while (current) {
+                    if (current === myMesh) return true;
+                    current = current.parent;
+                }
+                return false;
+            };
+
+            this.interactRaycaster.far = this.interactRange;
+            this.interactRaycaster.set(headPos, viewDir);
+            const interactHits = this.interactRaycaster.intersectObjects(this.scene.children, true)
+                .filter(hit => !isPlayerObject(hit.object));
+
+            const endPoint = headPos.clone().addScaledVector(viewDir, this.interactRange);
+            if (interactHits.length > 0) {
+                endPoint.copy(interactHits[0].point);
+            }
+
+            if (this.interactDebugLine) {
+                this.interactDebugLine.geometry.setFromPoints([headPos, endPoint]);
+            }
+
             // Rotate Player Mesh to face movement (Fixed 180 flip)
             if (finalMove.lengthSq() > 0.001) {
                 const angle = Math.atan2(finalMove.x, finalMove.z);

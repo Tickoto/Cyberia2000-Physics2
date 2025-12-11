@@ -95,17 +95,25 @@ export default class Player {
         }
     }
 
-    handleInteraction(viewDir) {
+    handleInteraction(viewDir = { x: 0, y: 0, z: -1 }) {
         const origin = this.rigidBody.translation();
-        // Adjust origin to eye height (approx 1.6m)
-        // Offset 0.6m forward to clear own capsule (radius 0.5)
-        const eyePos = { 
-            x: origin.x + viewDir.x * 0.6, 
-            y: origin.y + 1.6 + viewDir.y * 0.6, 
-            z: origin.z + viewDir.z * 0.6 
+        // Start at the player's head position and follow the camera's angle.
+        const eyePos = {
+            x: origin.x,
+            y: origin.y + 1.6,
+            z: origin.z
         };
-        
-        const hit = this.physicsSystems.raycastInteract(eyePos, viewDir, 3.0);
+
+        const length = Math.hypot(viewDir.x || 0, viewDir.y || 0, viewDir.z || 0) || 1;
+        const dir = {
+            x: (viewDir.x || 0) / length,
+            y: (viewDir.y || 0) / length,
+            z: (viewDir.z || 0) / length
+        };
+
+        const maxReachMeters = 2.0; // Approximate arm's reach
+
+        const hit = this.physicsSystems.raycastInteract(eyePos, dir, maxReachMeters, this.rigidBody.handle);
         
         if (hit) {
             const entity = this.physicsHandleMap ? this.physicsHandleMap.get(hit.bodyHandle) : null;

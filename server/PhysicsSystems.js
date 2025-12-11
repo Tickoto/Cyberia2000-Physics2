@@ -72,9 +72,9 @@ class PhysicsSystems {
      * @param {number} maxDistance 
      * @returns {Object|null} Hit result or null
      */
-    raycastInteract(origin, direction, maxDistance = 5.0) {
+    raycastInteract(origin, direction, maxDistance = 5.0, excludeBodyHandle = null) {
         const ray = new RAPIER.Ray(origin, direction);
-        const hit = this.world.castRay(ray, maxDistance, true);
+        const hit = this.world.castRay(ray, maxDistance, true, undefined, undefined, undefined, excludeBodyHandle || undefined);
 
         if (hit) {
             // Retrieve collider and parent body
