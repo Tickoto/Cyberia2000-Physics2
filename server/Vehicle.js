@@ -168,6 +168,36 @@ export default class Vehicle {
         }
     }
 
+    applyDriverInput(input = {}) {
+        if (!this.chassis) return;
+
+        const driveSpeed = this.type === 'TANK' ? 12 : (this.type === 'HELICOPTER' ? 15 : 18);
+        const steerIntensity = this.type === 'HELICOPTER' ? 0.04 : 0.03;
+
+        const forward = input.y || 0;
+        const strafe = input.x || 0;
+
+        const currentVel = this.chassis.linvel();
+        const desiredVel = { x: strafe * driveSpeed, y: currentVel.y, z: forward * driveSpeed };
+
+        this.chassis.setLinvel(desiredVel, true);
+
+        // Rotate chassis towards movement direction when there's input
+        if (Math.abs(forward) > 0.01 || Math.abs(strafe) > 0.01) {
+            const targetYaw = Math.atan2(-forward, -strafe);
+            const rot = this.chassis.rotation();
+
+            // Extract current yaw from quaternion
+            const siny_cosp = 2 * (rot.w * rot.y + rot.x * rot.z);
+            const cosy_cosp = 1 - 2 * (rot.y * rot.y + rot.z * rot.z);
+            const currentYaw = Math.atan2(siny_cosp, cosy_cosp);
+
+            const blendedYaw = currentYaw + (targetYaw - currentYaw) * steerIntensity;
+            const blendedQuat = RAPIER.Quaternion.fromEulerAngles(0, blendedYaw, 0);
+            this.chassis.setRotation(blendedQuat, true);
+        }
+    }
+
     toJSON() {
         const t = this.chassis.translation();
         const r = this.chassis.rotation();

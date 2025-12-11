@@ -1026,7 +1026,7 @@ class GameClient {
                 
                 // ... (Customization check omitted for brevity in match, but needed) ...
                 // Re-implement customization check for Players
-                if (!data.type && (data.hairColor !== entity.hairColor || 
+                if (!data.type && (data.hairColor !== entity.hairColor ||
                     data.skinColor !== entity.skinColor ||
                     data.outfit !== entity.outfit ||
                     data.hairStyle !== entity.hairStyle)) {
@@ -1046,6 +1046,13 @@ class GameClient {
                     entity.skinColor = data.skinColor;
                     entity.outfit = data.outfit;
                     entity.hairStyle = data.hairStyle;
+                }
+
+                // Hide the player model while they are inside a vehicle
+                if (!data.type && data.mountedVehicle) {
+                    entity.mesh.visible = false;
+                } else {
+                    entity.mesh.visible = true;
                 }
 
                 // Interpolation handles pos
