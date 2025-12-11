@@ -155,7 +155,9 @@ export default class Player {
         }
 
         if (seat === 0 && vehicle) {
-            vehicle.applyDriverInput(input || {}, dt);
+            // Transform input based on vehicle type
+            const vehicleInput = this.transformInputForVehicle(input, vehicle.type);
+            vehicle.applyDriverInput(vehicleInput, dt);
         }
 
         const seatPos = vehicle.getSeatWorldPosition(seat);
@@ -163,6 +165,38 @@ export default class Player {
             this.rigidBody.setNextKinematicTranslation(seatPos);
             this.data.position = seatPos;
         }
+    }
+
+    /**
+     * Transforms player input into vehicle-specific control input
+     * Different vehicles have different control schemes
+     */
+    transformInputForVehicle(input, vehicleType) {
+        if (!input) return {};
+
+        if (vehicleType === 'HELICOPTER') {
+            // Helicopter controls:
+            // Space (jump) = Throttle Up (spool up RPM)
+            // Shift (crouch) = Throttle Down
+            // W/S (y axis) = Pitch (forward/back tilt)
+            // A/D (x axis) = Roll (left/right tilt)
+            // Z/C (yawLeft/yawRight) = Yaw (anti-torque)
+            // Collective for additional lift
+            return {
+                throttleUp: input.jump || false,
+                throttleDown: input.crouch || false,
+                pitch: -(input.y || 0),      // W = pitch forward (nose down), S = pitch back
+                roll: input.x || 0,          // A = roll left, D = roll right
+                yaw: (input.yawLeft ? -1 : 0) + (input.yawRight ? 1 : 0),
+                collective: input.collective || 0
+            };
+        }
+
+        // Ground vehicles (JEEP, TANK) use standard input
+        return {
+            x: input.x || 0,
+            y: input.y || 0
+        };
     }
 
     /**
