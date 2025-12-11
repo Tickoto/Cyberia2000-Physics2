@@ -82,8 +82,12 @@ class PhysicsSystems {
             true,
             undefined,
             undefined,
-            undefined,
-            excludeColliderHandle || undefined
+            // Important: the sixth parameter is `filterExcludeCollider`, not
+            // `filterExcludeRigidBody`. Passing the handle here prevents the
+            // ray from immediately colliding with the player's own collider
+            // (which resulted in zero-distance hits).
+            excludeColliderHandle || undefined,
+            undefined
         );
 
         if (hit) {
