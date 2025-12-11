@@ -126,10 +126,11 @@ const VEHICLE_CONFIG = {
         rotor: {
             maxRPM: 400,
             idleRPM: 0,           // Engine off = 0 RPM
-            spoolUpRate: 50,      // RPM per second when holding throttle up
-            spoolDownRate: 35,    // RPM per second when holding throttle down
-            liftThreshold: 0.55,  // 55% RPM required for meaningful lift
-            maxLiftForce: 35000,  // Force at max RPM
+            spoolUpRate: 40,      // RPM per second when holding throttle up (slower for precision)
+            spoolDownRate: 30,    // RPM per second when holding throttle down (slower for precision)
+            liftThreshold: 0.40,  // 40% RPM required for meaningful lift (realistic light-on-skids)
+            maxLiftForce: 28000,  // Force at max RPM (tuned for wider hover zone)
+            liftExponent: 1.4,    // Gentler lift curve (was squared/2.0, now more linear)
             rotorRadius: 5.0,
             controlMinRPM: 0.2    // 20% RPM for any control response
         },
@@ -472,6 +473,9 @@ export default class Vehicle {
         // Process each suspension point
         let totalGroundedWheels = 0;
 
+        // Pre-compute vehicle collider handles for raycast filtering (exclude self)
+        const vehicleColliders = new Set(this.colliders.map(c => c.handle));
+
         this.suspensionState.forEach((wheel, index) => {
             // Calculate world position of suspension mount point
             const localPos = wheel.position;
@@ -486,7 +490,10 @@ export default class Vehicle {
             const maxRayLength = rayStartOffset + susp.restLength + susp.maxTravel + susp.wheelRadius + 0.2;
 
             const ray = new RAPIER.Ray(rayOrigin, rayDir);
-            const hit = this.world.castRay(ray, maxRayLength, true, undefined, undefined, this.chassisCollider);
+            // Filter predicate excludes all vehicle colliders from suspension raycasts
+            const hit = this.world.castRay(ray, maxRayLength, true, undefined, undefined, (collider) => {
+                return !vehicleColliders.has(collider.handle);
+            });
 
             if (hit) {
                 const hitDistance = hit.timeOfImpact;
@@ -608,10 +615,13 @@ export default class Vehicle {
         if (rpmRatio >= rotor.liftThreshold) {
             // Normalized lift (0 at threshold, 1 at max)
             const effectiveRatio = (rpmRatio - rotor.liftThreshold) / (1.0 - rotor.liftThreshold);
-            const liftForce = effectiveRatio * effectiveRatio * rotor.maxLiftForce;
+            // Use configurable exponent for gentler lift curve (default was squared/2.0)
+            const liftCurve = Math.pow(effectiveRatio, rotor.liftExponent || 1.4);
+            const liftForce = liftCurve * rotor.maxLiftForce;
 
             // Apply lift relative to helicopter's up vector
-            const totalLift = liftForce * (1.0 + this.collectiveInput * 0.5);
+            // Collective provides fine-tuning for precise hover control
+            const totalLift = liftForce * (1.0 + this.collectiveInput * 0.3);
 
             this.chassis.applyImpulse(scale(localUp, totalLift * dt), true);
         }
