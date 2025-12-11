@@ -79,7 +79,7 @@ class GameClient {
             fog: false,
             toneMapped: false
         });
-        this.interactDebugLine.setMaterial(lineMaterial);
+        this.interactDebugLine.line.material = lineMaterial;
         this.interactDebugLine.cone.material = coneMaterial;
         this.interactDebugLine.visible = false;
         this.scene.add(this.interactDebugLine);
