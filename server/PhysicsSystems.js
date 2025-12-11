@@ -72,42 +72,74 @@ class PhysicsSystems {
      * @param {number} maxDistance 
      * @returns {Object|null} Hit result or null
      */
-    raycastInteract(origin, direction, maxDistance = 5.0, excludeColliderHandle = null) {
-        const ray = new RAPIER.Ray(origin, direction);
-        // Exclude the provided collider (usually the player's own) so the ray can hit
-        // nearby objects instead of immediately intersecting the player capsule.
-        const hit = this.world.castRay(
+    raycastInteract(origin, direction, maxDistance = 5.0, excludeCollider = null) {
+        // Helper to translate Rapier's hit payload into the format expected by callers.
+        const buildHitResult = (hit, rayUsed) => {
+            const colliderHandle = hit.collider ?? hit.colliderHandle;
+            if (colliderHandle === undefined || colliderHandle === null) return null;
+
+            const collider = this.world.getCollider(colliderHandle);
+            if (!collider) return null;
+
+            const body = collider.parent();
+
+            // Rapier returns the time-of-impact under the property name `toi`.
+            // Preserve a consistent `distance` field for callers, but guard
+            // against unexpected undefined values to avoid downstream errors.
+            const toi = typeof hit.toi === 'number'
+                ? hit.toi
+                : (typeof hit.timeOfImpact === 'number' ? hit.timeOfImpact : null);
+
+            if (toi === null) return null;
+
+            const intersectionPoint = rayUsed.pointAt(toi);
+            const point = intersectionPoint && typeof intersectionPoint === 'object'
+                ? { x: intersectionPoint.x, y: intersectionPoint.y, z: intersectionPoint.z }
+                : null;
+
+            if (!point) return null;
+
+            return {
+                colliderHandle,
+                bodyHandle: body ? body.handle : null,
+                distance: toi,
+                point
+            };
+        };
+
+        const excludedColliderRef = excludeCollider || undefined;
+
+        const castRay = (ray, distance) => this.world.castRay(
             ray,
-            maxDistance,
+            distance,
             true,
             undefined,
             undefined,
             undefined,
-            excludeColliderHandle || undefined
+            excludedColliderRef
         );
 
-        if (hit) {
-            // Retrieve collider and parent body
-            const collider = this.world.getCollider(hit.colliderHandle);
-            const body = collider.parent();
-            
-            // Check for userData tag (simulated via looking up in a global map or property if wrapper exists)
-            // Since Rapier JS raw objects don't store arbitrary JS objects easily on 'userData' without a wrapper,
-            // we assume the Entity class managing this body handles the lookup via body.handle.
-            
-            // Rapier returns the time-of-impact under the property name `toi`.
-            // Preserve a consistent `distance` field for callers, but guard
-            // against unexpected undefined values to avoid downstream errors.
-            const toi = typeof hit.toi === 'number' ? hit.toi : hit.timeOfImpact;
+        const ray = new RAPIER.Ray(origin, direction);
+        let hit = castRay(ray, maxDistance);
 
-            return {
-                colliderHandle: hit.colliderHandle,
-                bodyHandle: body ? body.handle : null,
-                distance: toi,
-                point: typeof toi === 'number' ? ray.pointAt(toi) : null
+        // If we struck the excluded collider (typically the player capsule),
+        // offset the origin slightly forward and try again so interaction
+        // works even when the camera starts inside the collider volume.
+        const firstCollider = hit ? (hit.collider ?? hit.colliderHandle) : null;
+        if (hit && excludedColliderRef && firstCollider === excludedColliderRef.handle) {
+            const padding = 0.6;
+            const trimmedOrigin = {
+                x: origin.x + direction.x * padding,
+                y: origin.y + direction.y * padding,
+                z: origin.z + direction.z * padding
             };
+
+            const trimmedRay = new RAPIER.Ray(trimmedOrigin, direction);
+            hit = castRay(trimmedRay, Math.max(0, maxDistance - padding));
+            return hit ? buildHitResult(hit, trimmedRay) : null;
         }
-        return null;
+
+        return hit ? buildHitResult(hit, ray) : null;
     }
 }
 
