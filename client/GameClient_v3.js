@@ -59,7 +59,11 @@ class GameClient {
             new THREE.Vector3(),
             new THREE.Vector3()
         ]);
-        const lineMat = new THREE.LineBasicMaterial({ color: 0xff0000 });
+        const lineMat = new THREE.LineBasicMaterial({
+            color: 0xff0000,
+            depthTest: false,
+            depthWrite: false
+        });
         this.interactDebugLine = new THREE.Line(lineGeo, lineMat);
         this.interactDebugLine.frustumCulled = false;
         this.scene.add(this.interactDebugLine);
@@ -783,7 +787,7 @@ class GameClient {
             this.interactRaycaster.far = this.interactRange;
             this.interactRaycaster.set(headPos, viewDir);
             const interactHits = this.interactRaycaster.intersectObjects(this.scene.children, true)
-                .filter(hit => !isPlayerObject(hit.object));
+                .filter(hit => !isPlayerObject(hit.object) && hit.object !== this.interactDebugLine);
 
             const endPoint = headPos.clone().addScaledVector(viewDir, this.interactRange);
             if (interactHits.length > 0) {
