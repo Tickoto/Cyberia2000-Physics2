@@ -429,6 +429,17 @@ export class GeopoliticalMacroLayer {
         }
         return this.poiManager.getAllPOIsForClient();
     }
+
+    /**
+     * Get a random roadside POI position for player spawning
+     * Returns null if no roadside POIs exist
+     */
+    getRandomRoadsidePOI() {
+        if (!this.isInitialized || !this.poiManager) {
+            return null;
+        }
+        return this.poiManager.getRandomRoadsidePOI();
+    }
 }
 
 // Re-export sub-modules for direct access if needed
