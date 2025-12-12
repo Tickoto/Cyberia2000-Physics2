@@ -322,6 +322,11 @@ class POIManager {
   async generateFactionPOIs() {
     console.log('[POIManager] Generating faction-specific POIs...');
 
+    if (!this.politicalMap || !this.politicalMap.voronoiCells) {
+      console.log('[POIManager] No political map available, skipping faction POIs');
+      return;
+    }
+
     const factionPOILists = {
       [POIFaction.IRON_SYNOD]: Object.values(IronSynodPOIs),
       [POIFaction.CHROMA_CORP]: Object.values(ChromaCorpPOIs),
@@ -332,7 +337,6 @@ class POIManager {
     let factionPOICount = 0;
 
     for (const [faction, pois] of Object.entries(factionPOILists)) {
-      if (!this.politicalMap) continue;
 
       // Get all cells belonging to this faction
       const factionCells = Array.from(this.politicalMap.voronoiCells.values())
@@ -855,6 +859,40 @@ class POIManager {
       poi.currentFaction = newFaction;
       // Note: originalFaction is preserved to show who built it
     }
+  }
+
+  /**
+   * Get a random roadside POI position for player spawning
+   * Returns null if no roadside POIs exist
+   */
+  getRandomRoadsidePOI() {
+    // Filter POIs that were placed along roads
+    const roadsidePOIs = [];
+
+    for (const poiInstance of this.placedPOIs.values()) {
+      if (poiInstance.poi &&
+          poiInstance.poi.spawnContexts &&
+          poiInstance.poi.spawnContexts.includes(SpawnContext.ALONG_ROAD)) {
+        roadsidePOIs.push(poiInstance);
+      }
+    }
+
+    if (roadsidePOIs.length === 0) {
+      console.log('[POIManager] No roadside POIs available for spawn');
+      return null;
+    }
+
+    // Select a random roadside POI
+    const selectedPOI = roadsidePOIs[Math.floor(Math.random() * roadsidePOIs.length)];
+
+    return {
+      x: selectedPOI.position.x,
+      y: selectedPOI.position.y,
+      z: selectedPOI.position.z,
+      poiId: selectedPOI.id,
+      poiType: selectedPOI.poiType,
+      poiName: selectedPOI.poi.name
+    };
   }
 
   /**

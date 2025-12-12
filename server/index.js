@@ -106,10 +106,27 @@ io.on('connection', (socket) => {
 
     // Init player
     if (physicsWorld) {
-        // Calculate spawn height safely
-        const spawnX = worldConfig.spawn.x;
-        const spawnZ = worldConfig.spawn.z;
-        let spawnY = worldConfig.spawn.fallbackHeight; // Default fallback
+        // Try to spawn player near a random roadside POI
+        let spawnX = worldConfig.spawn.x;
+        let spawnZ = worldConfig.spawn.z;
+        let spawnY = worldConfig.spawn.fallbackHeight;
+
+        // Try to get a roadside POI spawn location
+        if (geopoliticalLayer && geopoliticalLayer.isInitialized) {
+            const roadsidePOI = geopoliticalLayer.getRandomRoadsidePOI();
+            if (roadsidePOI) {
+                spawnX = roadsidePOI.x;
+                spawnZ = roadsidePOI.z;
+                // Add small offset from the POI so player doesn't spawn inside it
+                const offsetAngle = Math.random() * Math.PI * 2;
+                const offsetDist = 10 + Math.random() * 15; // 10-25 units away
+                spawnX += Math.cos(offsetAngle) * offsetDist;
+                spawnZ += Math.sin(offsetAngle) * offsetDist;
+                console.log(`[Spawn] Player ${socket.id} spawning near ${roadsidePOI.poiName} at (${spawnX.toFixed(0)}, ${spawnZ.toFixed(0)})`);
+            }
+        }
+
+        // Calculate spawn height from terrain
         if (generator) {
             spawnY = generator.getGroundHeight(spawnX, spawnZ) + worldConfig.spawn.clearanceAboveGround;
         }
