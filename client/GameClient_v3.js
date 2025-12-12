@@ -476,10 +476,11 @@ class GameClient {
 
         // Generate POI meshes from geoPois data
         const poiMeshes = [];
+        const roadMeshes = [];
         if (data.geoPois && Array.isArray(data.geoPois)) {
             data.geoPois.forEach(poi => {
-                // Only process TERRAIN_POI types (the others are settlements, roads, etc.)
                 if (poi.type === 'TERRAIN_POI') {
+                    // Process terrain POIs (buildings, stations, etc.)
                     try {
                         const poiMesh = this.poiMeshGenerator.generatePOIMesh(poi);
                         if (poiMesh) {
@@ -489,11 +490,83 @@ class GameClient {
                     } catch (e) {
                         console.warn(`Failed to generate POI mesh for ${poi.poiType}:`, e);
                     }
+                } else if (poi.type === 'ROAD_SEGMENT') {
+                    // Process road segments
+                    try {
+                        const roadMesh = this.generateRoadSegmentMesh(poi, data.heights);
+                        if (roadMesh) {
+                            this.scene.add(roadMesh);
+                            roadMeshes.push(roadMesh);
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to generate road mesh:`, e);
+                    }
                 }
             });
         }
 
-        this.chunks.set(key, { mesh, waterMesh, objects, poiMeshes, biomeMap: data.biomeMap });
+        this.chunks.set(key, { mesh, waterMesh, objects, poiMeshes, roadMeshes, biomeMap: data.biomeMap });
+    }
+
+    /**
+     * Generate a road segment mesh from road data
+     */
+    generateRoadSegmentMesh(roadData, heights) {
+        const start = roadData.start;
+        const end = roadData.end;
+        const width = roadData.width || 4;
+
+        // Calculate road direction and length
+        const dx = end.x - start.x;
+        const dz = end.z - start.z;
+        const length = Math.sqrt(dx * dx + dz * dz);
+
+        if (length < 0.1) return null;
+
+        // Get approximate height at road midpoint
+        const midX = (start.x + end.x) / 2;
+        const midZ = (start.z + end.z) / 2;
+        const midY = (start.y !== undefined && end.y !== undefined)
+            ? (start.y + end.y) / 2
+            : 0.1; // Slightly above terrain
+
+        // Road color based on road class
+        let roadColor = 0x333333; // Default asphalt gray
+        if (roadData.roadClass === 'HIGHWAY') {
+            roadColor = 0x2a2a2a;
+        } else if (roadData.roadClass === 'SECONDARY') {
+            roadColor = 0x4a4a4a;
+        } else if (roadData.roadClass === 'DIRT') {
+            roadColor = 0x8b7355;
+        }
+
+        // Create road geometry - flat box
+        const geometry = new THREE.BoxGeometry(width, 0.15, length);
+        const material = new THREE.MeshStandardMaterial({
+            color: roadColor,
+            roughness: 0.9,
+            metalness: 0.0
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+
+        // Position at midpoint
+        mesh.position.set(midX, midY + 0.08, midZ);
+
+        // Rotate to align with road direction
+        const angle = Math.atan2(dx, dz);
+        mesh.rotation.y = angle;
+
+        mesh.receiveShadow = true;
+
+        // Store road data for interaction
+        mesh.userData = {
+            type: 'road',
+            roadId: roadData.roadId,
+            roadClass: roadData.roadClass
+        };
+
+        return mesh;
     }
 
     updateChunks() {
