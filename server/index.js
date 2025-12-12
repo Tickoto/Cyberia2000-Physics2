@@ -65,6 +65,14 @@ async function initPhysics() {
     geopoliticalLayer = new GeopoliticalMacroLayer(generator, worldConfig.seed);
     await geopoliticalLayer.initialize();
 
+    // Connect terrain stitching to world generator
+    if (geopoliticalLayer.poiManager) {
+        generator.setHeightModifier((chunkX, chunkZ, heightMap) => {
+            return geopoliticalLayer.processChunkHeightmap(chunkX, chunkZ, heightMap);
+        });
+        console.log('[Server] Terrain stitching connected to WorldGenerator');
+    }
+
     // Build world data with geopolitical information for WarDirector
     worldData = {
         pois: [],
