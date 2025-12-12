@@ -29,6 +29,17 @@ class WorldGenerator {
         this.noiseMoisture = createNoise2D(seededRandom(seed + '_moist'));
         this.noiseTemp = createNoise2D(seededRandom(seed + '_temp'));
         this.noiseRiver = createNoise2D(seededRandom(seed + '_river'));
+
+        // External heightmap modifier (set by GeopoliticalMacroLayer for POI terrain surgery)
+        this.heightModifier = null;
+    }
+
+    /**
+     * Set the height modifier function (terrain stitcher)
+     * @param {Function} modifier - Function that takes (chunkX, chunkZ, heightMap) and returns modified heightMap
+     */
+    setHeightModifier(modifier) {
+        this.heightModifier = modifier;
     }
 
     fbm(x, y, noiseFn, octaves = 4, persistence = 0.5, lacunarity = 2) {
@@ -199,6 +210,12 @@ class WorldGenerator {
         return this.calculateTerrain(x, z).height;
     }
 
+    // Get biome at position (for POI placement)
+    getBiome(x, z) {
+        const terrain = this.calculateTerrain(x, z);
+        return terrain.biome ? terrain.biome.id : 'GRASSLAND';
+    }
+
     generateChunk(chunkX, chunkZ) {
         const size = this.chunkSize;
         const data = {
@@ -243,7 +260,15 @@ class WorldGenerator {
             }
         }
 
-        // Dynamic POI Generation
+        // Apply external height modifications (POI terrain surgery)
+        if (this.heightModifier) {
+            const modifiedHeightMap = this.heightModifier(chunkX, chunkZ, data.heightMap);
+            if (modifiedHeightMap) {
+                data.heightMap = modifiedHeightMap;
+            }
+        }
+
+        // Dynamic POI Generation (legacy - kept for basic POI spawning)
         const poiHash = Math.abs(Math.sin(chunkX * 45.123 + chunkZ * 91.532) * 12345.678);
         if ((poiHash - Math.floor(poiHash)) > 0.95) {
             this.generatePOI(chunkX, chunkZ, data);

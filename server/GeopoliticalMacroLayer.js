@@ -13,6 +13,7 @@ import { FactionTerritoryManager, TerritoryState, Settlement } from './FactionTe
 import { GlobalHighwaySystem } from './GlobalHighwaySystem.js';
 import { Faction, FactionColors, FactionThemes, SettlementTier, SettlementConfig } from './Factions.js';
 import { worldConfig } from '../shared/config.js';
+import POIManager from './POIManager.js';
 
 /**
  * GeopoliticalMacroLayer - Main coordinator for all geopolitical systems
@@ -26,6 +27,7 @@ export class GeopoliticalMacroLayer {
         this.politicalMap = null;
         this.territoryManager = null;
         this.highwaySystem = null;
+        this.poiManager = null;
 
         // State
         this.isInitialized = false;
@@ -68,6 +70,15 @@ export class GeopoliticalMacroLayer {
                 this.seed
             );
             this.highwaySystem.generate();
+
+            // Phase 4: Initialize POI Manager and generate world POIs
+            console.log('\n[Phase 4] Initializing POI Manager and generating POIs...');
+            this.poiManager = new POIManager(
+                this.worldGenerator,
+                this.politicalMap,
+                this.highwaySystem
+            );
+            await this.poiManager.generateWorldPOIs();
 
             // Setup event forwarding
             this.setupEventHandlers();
@@ -140,6 +151,17 @@ export class GeopoliticalMacroLayer {
         console.log(`  Total Length: ${roadStats.totalLength}km`);
         console.log(`  Border Crossings: ${roadStats.borderCrossings}`);
         console.log(`  Tunnels: ${roadStats.tunnels} (${roadStats.tunnelLength}km)`);
+
+        if (this.poiManager) {
+            console.log('\n--- POI System ---');
+            const poiStats = this.poiManager.getStatistics();
+            console.log(`  Total POIs: ${poiStats.total}`);
+            console.log(`  With Foundations: ${poiStats.withFoundations}`);
+            console.log(`  By Category:`);
+            for (const [category, count] of Object.entries(poiStats.byCategory)) {
+                console.log(`    ${category}: ${count}`);
+            }
+        }
 
         console.log('\n' + '='.repeat(60) + '\n');
     }
@@ -363,7 +385,49 @@ export class GeopoliticalMacroLayer {
             }
         }
 
+        // Add terrain/wilderness POIs from POIManager
+        if (this.poiManager) {
+            const terrainPOIs = this.poiManager.getPOIsForChunk(chunkX, chunkZ, chunkSize);
+            for (const terrainPOI of terrainPOIs) {
+                pois.push({
+                    type: 'TERRAIN_POI',
+                    ...this.poiManager.serializePOI(terrainPOI)
+                });
+            }
+        }
+
         return pois;
+    }
+
+    /**
+     * Get terrain height modifications for a chunk
+     * Used by WorldGenerator to apply terrain surgery
+     */
+    getTerrainModifications(chunkX, chunkZ) {
+        if (!this.isInitialized || !this.poiManager) {
+            return null;
+        }
+        return this.poiManager.getTerrainModifications();
+    }
+
+    /**
+     * Process chunk heightmap with POI terrain modifications
+     */
+    processChunkHeightmap(chunkX, chunkZ, heightMap) {
+        if (!this.isInitialized || !this.poiManager) {
+            return heightMap;
+        }
+        return this.poiManager.processChunkHeightmap(chunkX, chunkZ, heightMap);
+    }
+
+    /**
+     * Get all POIs for initial client sync
+     */
+    getAllPOIs() {
+        if (!this.isInitialized || !this.poiManager) {
+            return [];
+        }
+        return this.poiManager.getAllPOIsForClient();
     }
 }
 
@@ -378,7 +442,8 @@ export {
     FactionTerritoryManager,
     TerritoryState,
     Settlement,
-    GlobalHighwaySystem
+    GlobalHighwaySystem,
+    POIManager
 };
 
 export default GeopoliticalMacroLayer;

@@ -4,6 +4,7 @@ import NetworkController from './NetworkController.js';
 import { ModelRig, ModelViewer } from '../model.js';
 import NetworkManager from '../shared/NetworkManager.js';
 import { appearanceDefaults, clientConfig, gameplayConfig, isDebugOn, renderingConfig } from '../shared/config.js';
+import POIMeshGenerator from './POIMeshGenerator.js';
 
 class GameClient {
     constructor() {
