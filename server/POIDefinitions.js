@@ -5,6 +5,8 @@
  * and mesh generation parameters for the TerrainStitcher and POIManager systems.
  */
 
+import { Faction } from './Factions.js';
+
 // POI Categories
 export const POICategory = {
   INFRASTRUCTURE: 'INFRASTRUCTURE',
