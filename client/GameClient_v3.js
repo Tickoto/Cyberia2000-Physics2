@@ -11,7 +11,7 @@ class GameClient {
         this.scene = null;
         this.camera = null;
         this.renderer = null;
-        
+
         // Connect to configured server URL, or same origin if not set
         // For remote connections, set clientConfig.serverUrl in shared/config.js
         // e.g., 'http://192.168.1.100:3000' or 'http://your-server.com:3000'
@@ -20,6 +20,9 @@ class GameClient {
         this.net = new NetworkController(this.socket);
         this.entities = new Map(); // id -> { mesh, rig? }
         this.vehicles = new Map(); // id -> { mesh, type }
+
+        // POI Mesh Generator for terrain POIs
+        this.poiMeshGenerator = new POIMeshGenerator();
         
         this.sunLight = null;
         this.dayTime = renderingConfig.dayTimeStart; // 0.25 = Noon (Sun at top)
@@ -471,7 +474,26 @@ class GameClient {
             });
         }
 
-        this.chunks.set(key, { mesh, waterMesh, objects, biomeMap: data.biomeMap });
+        // Generate POI meshes from geoPois data
+        const poiMeshes = [];
+        if (data.geoPois && Array.isArray(data.geoPois)) {
+            data.geoPois.forEach(poi => {
+                // Only process TERRAIN_POI types (the others are settlements, roads, etc.)
+                if (poi.type === 'TERRAIN_POI') {
+                    try {
+                        const poiMesh = this.poiMeshGenerator.generatePOIMesh(poi);
+                        if (poiMesh) {
+                            this.scene.add(poiMesh);
+                            poiMeshes.push(poiMesh);
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to generate POI mesh for ${poi.poiType}:`, e);
+                    }
+                }
+            });
+        }
+
+        this.chunks.set(key, { mesh, waterMesh, objects, poiMeshes, biomeMap: data.biomeMap });
     }
 
     updateChunks() {
