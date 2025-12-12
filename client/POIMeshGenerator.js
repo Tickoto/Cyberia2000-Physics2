@@ -147,7 +147,7 @@ class POIMeshGenerator {
     // Store POI data for interaction
     group.userData = {
       poiId: poiData.id,
-      poiType: poiData.type,
+      poiType: poiData.poiType || poiData.type,  // Use actual POI type (GAS_STATION, etc.)
       name: poiData.name,
       hasInterior: poiData.hasInterior,
       lootTier: poiData.lootTier
@@ -161,7 +161,9 @@ class POIMeshGenerator {
    */
   generateBuildingMesh(poiData, factionColors) {
     const meshData = poiData.meshData || {};
-    const type = meshData.type || poiData.type;
+    // Use poiType (the actual POI type like GAS_STATION) for mesh generation
+    // Falls back to meshData.type, then type for backwards compatibility
+    const type = meshData.type || poiData.poiType || poiData.type;
 
     switch (type) {
       case 'GAS_STATION':

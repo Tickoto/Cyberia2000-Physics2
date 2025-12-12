@@ -389,9 +389,11 @@ export class GeopoliticalMacroLayer {
         if (this.poiManager) {
             const terrainPOIs = this.poiManager.getPOIsForChunk(chunkX, chunkZ, chunkSize);
             for (const terrainPOI of terrainPOIs) {
+                const serialized = this.poiManager.serializePOI(terrainPOI);
                 pois.push({
-                    type: 'TERRAIN_POI',
-                    ...this.poiManager.serializePOI(terrainPOI)
+                    ...serialized,
+                    poiType: serialized.type,  // Preserve original POI type (GAS_STATION, etc.) for mesh generation
+                    type: 'TERRAIN_POI'        // Override type for client-side identification
                 });
             }
         }
