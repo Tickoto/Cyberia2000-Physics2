@@ -9,7 +9,8 @@ export default class NetworkManager {
         CHUNK_REQUEST: 'chunk_request',
         CHUNK_DATA: 'chunk_data',
         INTERACT_MENU: 'interact_menu',
-        INTERACT_DEBUG: 'interact_debug'
+        INTERACT_DEBUG: 'interact_debug',
+        ENTER_VEHICLE: 'enter_vehicle'
     };
 
     /**
